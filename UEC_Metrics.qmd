@@ -42,7 +42,7 @@ cat(sprintf("---\ntitle: \"SW UEC Metrics 'Type 1' (Week Ending %s)\"\n---\n", f
 
 ```
 
-<img src="C:/Users/euan.ives/Desktop/R Stuff/www/logo.png" width="200" height="100" style="position:absolute;top:10px;right:5px;"/>
+<img src="C:/Users/euan.ives/Desktop/R Stuff/www/logo.png" width="20" height="10" style="position:absolute;top:10px;right:5px;"/>
 
 ```{r setup}
 #| echo: false
@@ -854,25 +854,15 @@ bslib::layout_column_wrap(
 :::{.callout-note appearance="simple"}
 ## Purpose
 
-This weekly report tracks Urgent and Emergency Care (UEC) Priority 1 metrics across ICB and site levels to support winter resilience and align with NHS strategic goals of shifting care from hospital to community. Using ECDS and ONS data, it monitors age-stratified attendance rates (per 100,000) and quantifies avoidable Type 1 ED presentations by chief complaint, GP practice, and LSOA locality.
+This weekly report tracks Urgent and Emergency Care (UEC) Priority 1 metrics across ICB and site levels to support winter resilience and align with NHS strategic goals of shifting care from hospital to community. Using ECDS and ONS data, it monitors age-stratified attendance rates (per 100,000) and quantifies avoidable Type 1 ED presentations by chief complaint, and GP practice.
 
 By tracking 4-hour performance, 12-hour wait times, and total dwell time—with a dedicated focus on the frail elderly (65+)—the report evaluates operational throughput and models potential capacity achieved by directing non-urgent care to local primary services.
 :::
 
 ::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
-### View Additional Context
+### <i class="bi bi-activity"></i> ED Monitoring Infographic
 
-- **Target Population Focus:** Primary focus is directed toward the older adult demographic (Age 65+ / Frailty cohorts) to evaluate local service provision and localised ndefinedndefineddemand drivers across primary, community, and
-
-- Core Analytical Domains:
-
-  - **Demand & Context:** Demographic breakdown of raw and population-weighted ED attendances (per 100,000 ONS population), mapped by chief complaint, GP practice, and LSOA to pinpoint avoidable activity and model potential efficiency gains.
-
-  - **Operational Performance:** System flow and waiting times, specifically tracking 4-hour and 12-hour ED performance metrics alongside overall length of stay in the department.
-
-  - **ED Alternatives & Community Pathways:** Monitoring uptake, capacity, and diversion efficacy across Virtual Wards, Urgent Community Response (UCR) referrals, and SWAST ambulance outcomes (See & Treat / Hear & Treat).
-
-  - **Data Refresh & Governance:** Operational ED metrics derived from ECDS are updated weekly. Community and ambulance metrics (CSDS, VW Sitrep, SWAST) operate on bi-weekly or monthly refresh cycles subject to standard reporting lags.
+![Emergency Department Monitoring Infographic](C:/Users/euan.ives/Desktop/R Stuff/picture/uec_metrics_overview.jpg){width=80%}
 :::
 
 ## Attendances 
@@ -1417,10 +1407,15 @@ summary_df |>
       pageLength = 5,
       lengthMenu = list(c(5, 10, 25, 50, -1), c("5", "10", "25", "50", "All")),
       autoWidth = TRUE,
-      dom = "Blfrtip", # Added 'l' to display the length selection dropdown
+      dom = "Blfrtip",
       buttons = c("copy", "csv", "excel", "pdf"),
       columnDefs = list(
         list(className = "dt-right", targets = 4:7)
+      ),
+      initComplete = JS(
+        "function(settings, json) {",
+        "$(this.api().table().container()).css({'font-size': '12px'});",
+        "}"
       )
     )
   ) |>
@@ -1431,7 +1426,6 @@ summary_df |>
     mark = ",",
     digits = 0
   )
-
 
 ```
 
@@ -2532,8 +2526,9 @@ Arrival mode
 
 [Avoidable ED Attendances](https://github.com/nhsengland/ESA_Avoidable_ED_Attendances){target="_blank"}
 
-
 [Costs Major Emergency Departments (Type 1 A&E)](https://www.kingsfund.org.uk/insight-and-analysis/data-and-charts/key-facts-figures-nhs){target="_blank"}
+
+[GitHub Repo UEC Metrics](https://github.com/Euandj/UEC_Metrics){target="_blank"}
 
 VW sitrep
 
