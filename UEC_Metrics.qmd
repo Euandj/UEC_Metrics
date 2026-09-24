@@ -74,6 +74,8 @@ my_dir <- "C:/Users/euan.ives/Desktop/R Stuff/"
 
 age_palette <- c("0-18" = "#087558", "19-64" = "#E69F00", "65+" = "#3DB4F5")
 
+custom_colors <- c("#005EB8", "#00A499", "#41B6E6", "#D85B53", "#4C6272", "#8A1538", "#E8EDEE", "#768692", "#ED8B00")
+
 icb_palette <- c(
   "BSW"                     = "#005EB8",
   "BNSSG"                   = "#41B6E6",
@@ -119,7 +121,7 @@ closest_future_sunday <- function(date) {
 # Lkps - Graphs Plotly
 last_sunday <- max(readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC.rds"))$Week)
 start_date <- last_sunday - 90
-end_date   <- last_sunday
+end_date   <- last_sunday+1
 lkp_12_week <- last_sunday - weeks(11)
 
 # ED Visit Cost 
@@ -227,7 +229,7 @@ policy_annotation <- list(
   fontface = "bold"
 )
 
-# Generation Function
+# Commentary Generation Function
 generate_age_commentary <- function(data, age_group) {
   sub_df <- data |> 
     filter(AgeBand == age_group, Grp != "Other") |>
@@ -249,6 +251,30 @@ generate_age_commentary <- function(data, age_group) {
     sub_df$Group_Lower[3], sub_df$Percentage[3]*100
   )
 }
+
+# Time Commentary Generation Function
+generate_age_commentary_time <- function(data, age_group) {
+  sub_df <- data |> 
+    filter(AgeBand == age_group, Grp != "Other") |>
+    arrange(desc(Avg_Time)) |> 
+    mutate(Group_Lower = str_to_lower(Grp))
+  
+  top_pct <- sub_df$Percentage[1]*100
+  fraction_desc <- if (top_pct >= 50) "half" else if (top_pct >= 33.3) "a third" else if (top_pct >= 25) "a quarter" else "a fifth"
+  
+  sprintf(
+    "For the <b>%s</b> cohort, the primary driver was <b>%s</b>,
+    accounting for over %s (%.1f%%) of top-5 average time, 
+    followed by %s (%.1f%%) and %s (%.1f%%).",
+    age_group,
+    str_to_title(sub_df$Group_Lower[1]),
+    fraction_desc,
+    top_pct,
+    sub_df$Group_Lower[2], sub_df$Percentage[2]*100,
+    sub_df$Group_Lower[3], sub_df$Percentage[3]*100
+  )
+}
+
 
 # Def Colours
 get_chart_colors <- function(age_group) {
@@ -873,9 +899,6 @@ plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Atte
 
 #  Attendances By Chief Complaint
 
-# Custom palette (NHS Corporate Palette)
-custom_colors <- c("#005EB8", "#00A499", "#41B6E6", "#D85B53", "#4C6272", "#8A1538", "#E8EDEE", "#768692")
-
 # Distinct
 df_colors <- df_spot |> 
   filter(DataType == "Attendances") |>  # HERE !!
@@ -1098,9 +1121,6 @@ df_summary_age_rate |>
 #| warning: false
 
 # Avoidable Attendances By Chief Complaint
-
-# Custom palette (NHS Corporate Palette)
-custom_colors <- c("#005EB8", "#00A499", "#41B6E6", "#D85B53", "#4C6272", "#8A1538", "#E8EDEE", "#768692")
 
 # Distinct
 df_colors <- df_spot |> 
@@ -1516,7 +1536,7 @@ latest_overall <- df_overall |>
 latest_overall_annotation <- list(
   x = latest_overall$Week,
   y = latest_overall$pct_avoidable,
-  text = paste0("<b>Total</b>: ", scales::comma(latest_overall$pct_avoidable)),
+  text = paste0("<b>Total</b>: ", scales::percent(latest_overall$pct_avoidable / 100, accuracy = 0.1)),
   showarrow = TRUE,
   arrowhead = 2,
   arrowsize = 0.8,
@@ -1541,7 +1561,7 @@ latest_ageband_annotations <- lapply(1:nrow(latest_ageband), function(i) {
   list(
     x = row$Week,
     y = row$pct_avoidable,
-    text = paste0("<b>", row$AgeBand, "</b>: ", scales::comma(row$pct_avoidable)),
+    text = paste0("<b>", row$AgeBand, "</b>: ", scales::percent(row$pct_avoidable / 100, accuracy = 0.1)),
     showarrow = TRUE,
     arrowhead = 2,
     arrowsize = 0.8,
@@ -1627,7 +1647,10 @@ for (org in unique_orgs) {
 p |> 
   layout(
     title = list(text = "Proportion of Avoidable ED Attendances (%)"),
-    yaxis = list(title = list(text = "Avoidable ED Attendances (%)")),
+    yaxis = list(
+      title = list(text = "Avoidable ED Attendances (%)"),
+      ticksuffix = "%"
+    ),
     xaxis = list(
       title = "Week",
       range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
@@ -1958,7 +1981,6 @@ p |>
 :::
 
 
-
 ## 4 & 12 Hour Performance
 
 ::: {.panel-tabset .nav-pills}
@@ -1970,7 +1992,6 @@ p |>
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
-#| fig-align: "center"
 
 weekly_summary <- summary_df %>%
   filter(Week >= lkp_12_week) %>%
@@ -2080,8 +2101,6 @@ plot_data %>%
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
-#| fig-align: "center"
-
 
 weekly_summary <- summary_df %>%
   filter(Week >= lkp_12_week) |> 
@@ -2151,7 +2170,6 @@ ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = 
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
-#| fig-align: "center"
 
 plot_wait_times_by_age(summary_df, "0-18")
 
@@ -2164,7 +2182,6 @@ plot_wait_times_by_age(summary_df, "0-18")
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
-#| fig-align: "center"
  
 plot_wait_times_by_age(summary_df, "19-64")
 
@@ -2177,7 +2194,6 @@ plot_wait_times_by_age(summary_df, "19-64")
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
-#| fig-align: "center"
 
 plot_wait_times_by_age(summary_df, "65+")
 
@@ -2199,6 +2215,132 @@ plot_wait_times_by_age(summary_df, "65+")
 plot_time_summary(df_clean, "Average Time Spent In ED Department & By Age", "Minutes")
 
 ```
+
+- Spot Week :
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Time 
+df_spot_time <- df_clean |> 
+  filter(Week == max(Week, na.rm = TRUE)) |> 
+  filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  group_by(Week, AgeBand, Grp) |> 
+  summarise(Avg_Time = round(mean(DerEcDuration, na.rm = TRUE), 0), .groups = "drop")
+
+# Distinct
+df_colors <- df_spot_time |> 
+  distinct(Grp) |> 
+  mutate(color = custom_colors[1:n()])
+
+# Add Colours
+df_pie_data <- df_spot_time |> 
+  left_join(df_colors, by = "Grp")
+
+# Construct Plotly figure using category-mapped custom palette
+plot_ly() |> 
+  # Chart 1: 0-18
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "0-18"),
+    labels = ~Grp,
+    values = ~Avg_Time,
+    hole = 0.5,
+    name = "0-18",
+    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0, 0.31)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("0-18"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 2: 19-64
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "19-64"),
+    labels = ~Grp,
+    values = ~Avg_Time,
+    hole = 0.5,
+    name = "19-64",
+    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.34, 0.65)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("19-64"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 3: 65+
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "65+"),
+    labels = ~Grp,
+    values = ~Avg_Time,
+    hole = 0.5,
+    name = "65+",
+    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.68, 0.99)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("65+"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  layout(
+    title = list(
+      text = paste0(
+        "<b>Average Time Spent In ED Department & By Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    showlegend = TRUE,
+    legend = list(
+      orientation = "h",
+      x = 0.5,
+      xanchor = "center",
+      y = -0.12
+    ),
+    margin = list(l = 10, r = 10, t = 70, b = 60)
+  )
+
+```
+
+```{r Commentary 3}
+#| warning: false
+
+# Data 
+dfc3 <- df_clean |> 
+  filter(Week == max(Week, na.rm = TRUE)) |> 
+  filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  group_by(Week, AgeBand, Grp) |> 
+  summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop_last") |> 
+  mutate(
+    Percentage = Avg_Time / sum(Avg_Time),
+    Rank = min_rank(desc(Avg_Time))
+  ) |> 
+  ungroup() 
+
+# Strings for Each Demography
+commentary_0_18  <- generate_age_commentary_time(dfc3, "0-18")
+commentary_19_64 <- generate_age_commentary_time(dfc3, "19-64")
+commentary_65_plus <- generate_age_commentary_time(dfc3, "65+")
+
+# Combine
+commentary_summary3 <- paste(commentary_0_18, commentary_19_64, commentary_65_plus, sep = "<br><br>")
+
+```
+
+`r commentary_summary3`
+
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
 
 :::
 
