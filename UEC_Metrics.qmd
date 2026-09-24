@@ -1,0 +1,2413 @@
+---
+title: "SW UEC Metrics 'Type 1'"
+author: "Euan Ives - Insights & Intelligence Team"
+date: today
+date-format: "D MMMM YYYY"
+editor: visual
+execute:
+  echo: false
+  warning: false
+format:
+  html:
+    toc: true
+    number-sections: false
+    toc-location: left
+    toc-title: Contents
+    toc-depth: 3
+    theme: cerulean
+    embed-resources: true 
+    link-external-icon: true
+    link-external-newwindow: true
+    citations-hover: true
+    footnotes-hover: true
+    callout-appearance: simple
+    callout-collapse: true
+    cap-location: bottom
+    title-block-banner: '#005EB8'
+    backgroundcolor: '#ffffff'
+    page-layout: full
+    grid:
+      body-width: 1500px 
+---
+
+```{r Inject Title}
+#| echo: false
+#| results: 'asis'
+
+# Find Week - Title
+formatted_date <- format(max(readRDS("C:/Users/euan.ives/Desktop/R Stuff/data/rds/Spot_Week_UEC.rds")$Week), "%d %b %Y")
+
+# Inject dynamic YAML title
+cat(sprintf("---\ntitle: \"SW UEC Metrics 'Type 1' (Week Ending %s)\"\n---\n", formatted_date))
+
+```
+
+<img src="C:/Users/euan.ives/Desktop/R Stuff/www/logo.png" width="200" height="100" style="position:absolute;top:10px;right:5px;"/>
+
+```{r setup}
+#| echo: false
+#| warning: false
+
+library(quarto)
+library(ggplot2)
+library(tidyverse)
+library(DT)
+library(janitor)
+library(plotly)
+library(DT)
+library(readr)
+library(gt)
+library(bslib)
+library(bsicons)
+library(purrr)
+library(htmltools)
+library(scales)
+library(ggrepel)
+library(leaflet)
+library(leaflet.extras)
+library(htmlwidgets)
+
+# Set PC Directory 
+my_dir <- "C:/Users/euan.ives/Desktop/R Stuff/"
+
+# my_palette <- c("#3DB4F5", "#820F25", "#087558", "#E69F00", "#EADC17", "#6F00D5", "#6F7D86")
+
+age_palette <- c("0-18" = "#087558", "19-64" = "#E69F00", "65+" = "#3DB4F5")
+
+icb_palette <- c(
+  "BSW"                     = "#005EB8",
+  "BNSSG"                   = "#41B6E6",
+  "CIOS"                    = "#330072",
+  "Devon"                   = "#AE2573",
+  "Dorset"                  = "#78BE20",
+  "Gloucestershire"         = "#ECE354",
+  "Gloucestershire (HC)"    = "#CCC337",
+  "Somerset"                = "#EE9F00"
+)
+
+# Lookup dataframe of South West Acute Hospital sites and coordinates
+site_coords <- tibble::tribble(
+  ~OrganisationName,                           ~lat,     ~lng,      ~Postcode,
+  "BRISTOL ROYAL HOSPITAL FOR CHILDREN",       51.4583,  -2.5976,   "BS2 8BJ",
+  "BRISTOL ROYAL INFIRMARY",                  51.4589,  -2.5956,   "BS2 8HW",
+  "CHELTENHAM GENERAL HOSPITAL",              51.8921,  -2.0735,   "GL53 7AN",
+  "DERRIFORD HOSPITAL",                       50.4172,  -4.1161,   "PL6 8DH",
+  "DORSET COUNTY HOSPITAL",                   50.7093,  -2.4439,   "DT1 2JY",
+  "GLOUCESTERSHIRE ROYAL HOSPITAL",           51.8683,  -2.2335,   "GL1 3NN",
+  "MUSGROVE PARK HOSPITAL",                   51.0121,  -3.1189,   "TA1 5DA",
+  "NORTH DEVON DISTRICT HOSPITAL",            51.0911,  -4.0543,   "EX31 4JB",
+  "ROYAL CORNWALL HOSPITAL (TRELISKE)",       50.2690,  -5.0954,   "TR1 3LJ",
+  "ROYAL DEVON & EXETER HOSPITAL (WONFORD)",  50.7161,  -3.5028,   "EX2 5DW",
+  "ROYAL UNITED HOSPITAL",                    51.3888,  -2.3897,   "BA1 3NG",
+  "SALISBURY DISTRICT HOSPITAL",              51.0478,  -1.7925,   "SP2 8BJ",
+  "SOUTHMEAD HOSPITAL",                       51.4975,  -2.5908,   "BS10 5NB",
+  "THE GREAT WESTERN HOSPITAL",               51.5348,  -1.7482,   "SN3 6BB",
+  "TORBAY HOSPITAL",                           50.4811,  -3.5511,   "TQ2 7AA",
+  "WESTON GENERAL HOSPITAL",                  51.3201,  -2.9620,   "BS23 4TQ",
+  "YEOVIL DISTRICT HOSPITAL",                 50.9458,  -2.6341,   "BA21 4AT"
+)
+
+# Week ending function (Sunday)
+closest_future_sunday <- function(date) {
+  my_date <- ymd(date)
+  my_day <- wday(my_date)
+  shift <- ifelse(my_day <= 1, 0, 7)
+  return(my_date + days(1 - my_day + shift))
+}
+
+
+# Lkps - Graphs Plotly
+last_sunday <- max(readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC.rds"))$Week)
+start_date <- last_sunday - 90
+end_date   <- last_sunday
+lkp_12_week <- last_sunday - weeks(11)
+
+# ED Visit Cost 
+lkp_ed_visit_cost <- 271.64
+
+```
+
+```{r datasets}
+#| echo: false
+#| warning: false
+
+# Data Sets
+df_spot <- readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC.rds"))
+summary_df <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances.rds"))
+df_clean <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
+df_ons <- readRDS(paste0(my_dir,"data/rds/UEC_Attendances_ONS_lkp.rds"))
+summary_df_avoidable <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge.rds"))
+# df_avoidable_event <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge_Events.rds"))
+
+metrics_data <- readRDS(paste0(my_dir,"data/rds/UEC_summary_boxes.rds"))
+
+```
+
+```{r box updates}
+#| warning: false
+
+# # Boxes 
+
+create_dynamic_value_box <- function(metric_name, current_val, target_val, prev_val, lower_is_better, format_type) {
+  
+  # Determine target performance (Colour)
+  meets_target <- if(lower_is_better) current_val <= prev_val else current_val >= prev_val
+  box_theme <- if (meets_target) "success" else "warning"
+  
+  # Determine week-on-week movement (Icon & Delta string)
+  wow_diff <- current_val - prev_val
+  
+  if (wow_diff > 0) {
+    wow_icon <- bsicons::bs_icon("arrow-up-right-circle-fill")
+    direction_label <- "up"
+  } else if (wow_diff < 0) {
+    wow_icon <- bsicons::bs_icon("arrow-down-right-circle-fill")
+    direction_label <- "down"
+  } else {
+    wow_icon <- bsicons::bs_icon("dash-circle-fill")
+    direction_label <- "flat"
+  }
+  
+  # Map specific showcase icon based on metric_name
+  showcase_icon_name <- switch(
+    metric_name,
+    "Total Attendances"     = "people",
+    "Avoidable Attendances" = "person-badge",
+    "A&E 4-Hour Target"     = "clock-history",
+    "4-12 Hour Waits"       = "hourglass-split",
+    "12+ Hour Waits"        = "exclamation-triangle",
+    "activity" # Default fallback icon
+  )
+  
+  showcase_icon <- bsicons::bs_icon(showcase_icon_name)
+  
+  # Format displayed main value
+  formatted_val <- switch(
+    format_type,
+    "percent" = paste0(formatC(current_val, digits = 1, format = "f"), "%"),
+    "number"  = formatC(current_val, big.mark = ",", format = "d"),
+    "time"    = sprintf("%02d:%02d", floor(current_val), round((current_val %% 1) * 60)),
+    as.character(current_val)
+  )
+  
+  # Format WoW change string
+  formatted_diff <- switch(
+    format_type,
+    "percent" = paste0(sprintf("%+.1f", wow_diff), "% WoW"),
+    "number"  = paste0(sprintf("%+d", round(wow_diff)), " WoW"),
+    "time"    = paste0(sprintf("%+.1f", wow_diff), " mins WoW"),
+    paste0(sprintf("%+.1f", wow_diff), " WoW")
+  )
+  
+  # Render value box
+  bslib::value_box(
+    title = metric_name,
+    value = formatted_val,
+    htmltools::p(wow_icon, formatted_diff),
+    showcase = showcase_icon,
+    theme = box_theme
+  )
+}
+
+```
+
+
+```{r functions}
+
+# Policy change annotation
+policy_annotation <- list(
+  x = "2026-09-01",
+  y = 1,
+  yref = "paper",
+  text = "Policy Change<br>(1st Sep 2026)",
+  showarrow = FALSE,
+  xanchor = "left",
+  yanchor = "top",
+  font = list(color = "#d9534f", size = 11),
+  fontface = "bold"
+)
+
+# Generation Function
+generate_age_commentary <- function(data, age_group) {
+  sub_df <- data |> 
+    filter(AgeBand == age_group, Grp != "Other") |>
+    arrange(desc(Total_Attendances)) |> 
+    mutate(Group_Lower = str_to_lower(Grp))
+  
+  top_pct <- sub_df$Percentage[1]*100
+  fraction_desc <- if (top_pct >= 50) "half" else if (top_pct >= 33.3) "a third" else if (top_pct >= 25) "a quarter" else "a fifth"
+  
+  sprintf(
+    "For the <b>%s</b> cohort, the primary driver was <b>%s</b>,
+    accounting for over %s (%.1f%%) of top-5 avoidable attendances, 
+    followed by %s (%.1f%%) and %s (%.1f%%).",
+    age_group,
+    str_to_title(sub_df$Group_Lower[1]),
+    fraction_desc,
+    top_pct,
+    sub_df$Group_Lower[2], sub_df$Percentage[2]*100,
+    sub_df$Group_Lower[3], sub_df$Percentage[3]*100
+  )
+}
+
+# Def Colours
+get_chart_colors <- function(age_group) {
+  df_pie_data |> 
+    filter(AgeBand == age_group) |> 
+    pull(color)
+}
+
+# Performance - 4 Hour , 12 Hour 
+plot_wait_times_by_age <- function(df, target_age_band, last_sunday) {
+  
+  plot_data <- df %>%
+    filter(Week >= lkp_12_week) %>%
+    mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+    group_by(Week, AgeBand, Stp) %>%
+    summarise(
+      pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+      pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+      pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+      .groups = "drop"
+    ) %>%
+    filter(AgeBand == target_age_band) %>%
+    pivot_longer(
+      cols = starts_with("pct_"),
+      names_to = "Wait_Category",
+      values_to = "Percentage"
+    ) %>%
+    mutate(
+      Wait_Category = factor(
+        Wait_Category,
+        levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
+        labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
+      )
+    )
+  
+  ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+    geom_line(linewidth = 1) +
+    geom_point(size = 2) +
+    geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+    annotate(
+      "text",
+      x = min(plot_data$Week, na.rm = TRUE),
+      y = 94,
+      label = "76% Target",
+      colour = "#1b7837",
+      hjust = 0,
+      fontface = "bold"
+    ) +
+    facet_wrap(~ Stp) +
+    scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+    scale_colour_manual(values = c(
+      "<4 Hours" = "#2166ac",
+      "4-12 Hours" = "#f4a582",
+      ">12 Hours" = "#b2182b"
+    )) +
+    labs(
+      title = paste("Weekly Emergency Department Wait-Time Performance Trends by ICB - Age Band:", target_age_band),
+      subtitle = "Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+      x = "Week Ending",
+      y = "Percentage of Attendances",
+      colour = "Wait Duration"
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "bottom",
+      panel.grid.minor = element_blank(),
+      strip.text = element_text(face = "bold", size = 10)
+    )
+}
+
+# Plotly Graphs All, Age, ICB & Trust 
+plot_attendance_summary <- function(p_df, p_title, p_yaxis) {
+  
+  # 1. Prepare overall data
+  df_overall <- p_df |> 
+    group_by(Week) |> 
+    summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
+  
+  # 2. Prepare group-level data (Week + AgeBand)
+  df_ageband <- p_df |> 
+    group_by(Week, AgeBand) |> 
+    summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
+  
+  # 3. Prepare system-level data (Week + ICB)
+  df_stp <- p_df |> 
+    mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+    group_by(Week, ICB) |> 
+    summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
+  
+  # 4. Prepare provider-level data (Week + OrganisationName)
+  df_org <- p_df |> 
+    group_by(Week, OrganisationName) |> 
+    summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
+  
+  # Determine unique categories
+  unique_agebands <- unique(df_ageband$AgeBand)
+  n_agebands <- length(unique_agebands)
+  
+  unique_stps <- unique(df_stp$ICB)
+  n_stps <- length(unique_stps)
+  
+  unique_orgs <- unique(df_org$OrganisationName)
+  n_orgs <- length(unique_orgs)
+  
+  # Configure visibility vectors for dynamic dropdown
+  vis_overall <- c(TRUE,  rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(FALSE, n_orgs))
+  vis_ageband <- c(FALSE, rep(TRUE, n_agebands),  rep(FALSE, n_stps), rep(FALSE, n_orgs))
+  vis_stp     <- c(FALSE, rep(FALSE, n_agebands), rep(TRUE, n_stps),  rep(FALSE, n_orgs))
+  vis_org     <- c(FALSE, rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(TRUE, n_orgs))
+  
+  # Extract latest point annotation for "Total Only"
+  latest_overall <- df_overall |> 
+    filter(Week == max(Week))
+  
+  latest_overall_annotation <- list(
+    x = latest_overall$Week,
+    y = latest_overall$Vol,
+    text = paste0("<b>Total</b>: ", scales::comma(latest_overall$Vol)),
+    showarrow = TRUE,
+    arrowhead = 2,
+    arrowsize = 0.8,
+    ax = 30,
+    ay = -20,
+    font = list(size = 10),
+    bgcolor = "rgba(255, 255, 255, 0.85)",
+    bordercolor = "#1f77b4",
+    borderwidth = 1.5
+  )
+  
+  # Extract latest points annotations for "AgeBand"
+  latest_ageband <- df_ageband |> 
+    group_by(AgeBand) |> 
+    filter(Week == max(Week)) |> 
+    ungroup()
+  
+  latest_ageband_annotations <- lapply(1:nrow(latest_ageband), function(i) {
+    row <- latest_ageband[i, ]
+    band_color <- if (exists("age_palette")) unname(age_palette[as.character(row$AgeBand)]) else NA
+    if (is.na(band_color)) band_color <- "#cccccc"
+    list(
+      x = row$Week,
+      y = row$Vol,
+      text = paste0("<b>", row$AgeBand, "</b>: ", scales::comma(row$Vol)),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 0.8,
+      ax = 30,
+      ay = -20,
+      font = list(size = 10),
+      bgcolor = "rgba(255, 255, 255, 0.85)",
+      bordercolor = band_color,
+      borderwidth = 1.5
+    )
+  })
+  
+  # Build plot
+  p <- plot_ly() |> 
+    # Trace 1: Total
+    add_trace(
+      data = df_overall,
+      x = ~Week,
+      y = ~Vol,
+      type = "scatter",
+      mode = "lines+markers",
+      name = "Total",
+      marker = list(size = 6),
+      line = list(color = "#1f77b4"),
+      visible = TRUE
+    )
+  
+  # Traces 2+: By AgeBand
+  for (band in unique_agebands) {
+    df_sub <- df_ageband |> filter(AgeBand == band)
+    band_color <- if (exists("age_palette")) unname(age_palette[as.character(band)]) else NA
+    if (is.na(band_color)) band_color <- "#1f77b4"
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Vol,
+        type = "scatter",
+        mode = "lines+markers",
+        name = band,
+        marker = list(size = 6, color = band_color),
+        line = list(color = band_color),
+        visible = FALSE
+      )
+  }
+  
+  # Traces By STP
+  for (stp_item in unique_stps) {
+    df_sub <- df_stp |> filter(ICB == stp_item)
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Vol,
+        type = "scatter",
+        mode = "lines+markers",
+        name = stp_item,
+        marker = list(size = 6),
+        visible = FALSE
+      )
+  }
+  
+  # Traces By Organisation
+  for (org in unique_orgs) {
+    df_sub <- df_org |> filter(OrganisationName == org)
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Vol,
+        type = "scatter",
+        mode = "lines+markers",
+        name = org,
+        marker = list(size = 6),
+        visible = FALSE
+      )
+  }
+  
+  # Apply Layout & Updatemenus
+  p |> 
+    layout(
+      title = list(text = p_title),
+      yaxis = list(title = list(text = p_yaxis)),
+      xaxis = list(
+        title = "Week",
+        range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+        rangeslider = list(visible = TRUE),
+        rangeselector = list(
+          x = 0.75, 
+          y = 1.1, 
+          xanchor = "right",
+          yanchor = "top",
+          buttons = list(
+            list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+            list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+            list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+            list(step = "all", label = "All")
+          )
+        )
+      ),
+      updatemenus = list(
+        list(
+          type = "dropdown",
+          direction = "down",
+          x = -0.05,
+          y = 1.25,
+          xanchor = "left",
+          yanchor = "top",
+          buttons = list(
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_overall),
+                list(annotations = list(latest_overall_annotation, policy_annotation))
+              ),
+              label = "View: Total Only"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_ageband),
+                list(annotations = c(latest_ageband_annotations, list(policy_annotation)))
+              ),
+              label = "View: By AgeBand"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_stp),
+                list(annotations = list(policy_annotation))
+              ),
+              label = "View: By ICB"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_org),
+                list(annotations = list(policy_annotation))
+              ),
+              label = "View: By Trust"
+            )
+          )
+        )
+      ),
+      shapes = list(
+        list(
+          type = "line",
+          x0 = "2026-09-01",
+          x1 = "2026-09-01",
+          y0 = 0,
+          y1 = 1,
+          yref = "paper",
+          line = list(color = "#d9534f", width = 2, dash = "dash")
+        )
+      ),
+      annotations = list(latest_overall_annotation, policy_annotation)
+    )
+}
+
+# Time - Mean 
+plot_time_summary <- function(p_df, p_title, p_yaxis) {
+  
+  # 1. Prepare overall data
+  df_overall <- p_df |> 
+    group_by(Week) |> 
+    summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
+  
+  # 2. Prepare group-level data (Week + AgeBand)
+  df_ageband <- p_df |> 
+    group_by(Week, AgeBand) |> 
+    summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
+  
+  # 3. Prepare system-level data (Week + ICB)
+  df_stp <- p_df |>  
+    mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+    group_by(Week, ICB) |> 
+    summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
+  
+  # 4. Prepare provider-level data (Week + OrganisationName)
+  df_org <- p_df |> 
+    group_by(Week, OrganisationName) |> 
+    summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
+  
+  # Determine unique categories
+  unique_agebands <- unique(df_ageband$AgeBand)
+  n_agebands <- length(unique_agebands)
+  
+  unique_stps <- unique(df_stp$ICB)
+  n_stps <- length(unique_stps)
+  
+  unique_orgs <- unique(df_org$OrganisationName)
+  n_orgs <- length(unique_orgs)
+  
+  # Configure visibility vectors for dynamic dropdown
+  vis_overall <- c(TRUE,  rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(FALSE, n_orgs))
+  vis_ageband <- c(FALSE, rep(TRUE, n_agebands),  rep(FALSE, n_stps), rep(FALSE, n_orgs))
+  vis_stp     <- c(FALSE, rep(FALSE, n_agebands), rep(TRUE, n_stps),  rep(FALSE, n_orgs))
+  vis_org     <- c(FALSE, rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(TRUE, n_orgs))
+  
+  # Extract latest point annotation for "Total Only"
+  latest_overall <- df_overall |> 
+    filter(Week == max(Week))
+  
+  latest_overall_annotation <- list(
+    x = latest_overall$Week,
+    y = latest_overall$Avg_Time,
+    text = paste0("<b>Total</b>: ", scales::comma(latest_overall$Avg_Time)),
+    showarrow = TRUE,
+    arrowhead = 2,
+    arrowsize = 0.8,
+    ax = 30,
+    ay = -20,
+    font = list(size = 10),
+    bgcolor = "rgba(255, 255, 255, 0.85)",
+    bordercolor = "#1f77b4",
+    borderwidth = 1.5
+  )
+  
+  # Extract latest points annotations for "AgeBand"
+  latest_ageband <- df_ageband |> 
+    group_by(AgeBand) |> 
+    filter(Week == max(Week)) |> 
+    ungroup()
+  
+  latest_ageband_annotations <- lapply(1:nrow(latest_ageband), function(i) {
+    row <- latest_ageband[i, ]
+    band_color <- if (exists("age_palette")) unname(age_palette[as.character(row$AgeBand)]) else NA
+    if (is.na(band_color)) band_color <- "#cccccc"
+    list(
+      x = row$Week,
+      y = row$Avg_Time,
+      text = paste0("<b>", row$AgeBand, "</b>: ", scales::comma(row$Avg_Time)),
+      showarrow = TRUE,
+      arrowhead = 2,
+      arrowsize = 0.8,
+      ax = 30,
+      ay = -20,
+      font = list(size = 10),
+      bgcolor = "rgba(255, 255, 255, 0.85)",
+      bordercolor = band_color,
+      borderwidth = 1.5
+    )
+  })
+  
+  # Build plot
+  p <- plot_ly() |> 
+    # Trace 1: Total
+    add_trace(
+      data = df_overall,
+      x = ~Week,
+      y = ~Avg_Time,
+      type = "scatter",
+      mode = "lines+markers",
+      name = "Total",
+      marker = list(size = 6),
+      line = list(color = "#1f77b4"),
+      visible = TRUE
+    )
+  
+  # Traces 2+: By AgeBand
+  for (band in unique_agebands) {
+    df_sub <- df_ageband |> filter(AgeBand == band)
+    band_color <- if (exists("age_palette")) unname(age_palette[as.character(band)]) else NA
+    if (is.na(band_color)) band_color <- "#1f77b4"
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Avg_Time,
+        type = "scatter",
+        mode = "lines+markers",
+        name = band,
+        marker = list(size = 6, color = band_color),
+        line = list(color = band_color),
+        visible = FALSE
+      )
+  }
+  
+  # Traces By STP
+  for (stp_item in unique_stps) {
+    df_sub <- df_stp |> filter(ICB == stp_item)
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Avg_Time,
+        type = "scatter",
+        mode = "lines+markers",
+        name = stp_item,
+        marker = list(size = 6),
+        visible = FALSE
+      )
+  }
+  
+  # Traces By Organisation
+  for (org in unique_orgs) {
+    df_sub <- df_org |> filter(OrganisationName == org)
+    
+    p <- p |> 
+      add_trace(
+        data = df_sub,
+        x = ~Week,
+        y = ~Avg_Time,
+        type = "scatter",
+        mode = "lines+markers",
+        name = org,
+        marker = list(size = 6),
+        visible = FALSE
+      )
+  }
+  
+  # Apply Layout & Updatemenus
+  p |> 
+    layout(
+      title = list(text = p_title),
+      yaxis = list(title = list(text = p_yaxis)),
+      xaxis = list(
+        title = "Week",
+        range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+        rangeslider = list(visible = TRUE),
+        rangeselector = list(
+          x = 0.75, 
+          y = 1.1, 
+          xanchor = "right",
+          yanchor = "top",
+          buttons = list(
+            list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+            list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+            list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+            list(step = "all", label = "All")
+          )
+        )
+      ),
+      updatemenus = list(
+        list(
+          type = "dropdown",
+          direction = "down",
+          x = -0.05,
+          y = 1.25,
+          xanchor = "left",
+          yanchor = "top",
+          buttons = list(
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_overall),
+                list(annotations = list(latest_overall_annotation, policy_annotation))
+              ),
+              label = "View: Total Only"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_ageband),
+                list(annotations = c(latest_ageband_annotations, list(policy_annotation)))
+              ),
+              label = "View: By AgeBand"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_stp),
+                list(annotations = list(policy_annotation))
+              ),
+              label = "View: By ICB"
+            ),
+            list(
+              method = "update",
+              args = list(
+                list(visible = vis_org),
+                list(annotations = list(policy_annotation))
+              ),
+              label = "View: By Trust"
+            )
+          )
+        )
+      ),
+      shapes = list(
+        list(
+          type = "line",
+          x0 = "2026-09-01",
+          x1 = "2026-09-01",
+          y0 = 0,
+          y1 = 1,
+          yref = "paper",
+          line = list(color = "#d9534f", width = 2, dash = "dash")
+        )
+      ),
+      annotations = list(latest_overall_annotation, policy_annotation)
+    )
+}
+
+
+
+
+```
+
+## Overview 
+
+::: columns
+```{r}
+#| echo: false
+#| warning: false
+
+# Generate a list of value box objects
+boxes <- purrr::pmap(metrics_data, function(metric_name, current_val, target_val, prev_val, lower_is_better, format_type) {
+  create_dynamic_value_box(
+    metric_name     = metric_name,
+    current_val     = current_val,
+    target_val      = target_val,
+    prev_val        = prev_val,
+    lower_is_better = lower_is_better,
+    format_type     = format_type
+  )
+})
+
+# Render
+bslib::layout_column_wrap(
+  width = 1/5,
+  !!!boxes
+)
+
+```
+
+:::
+
+## Scope & Regional Context
+
+:::{.callout-note appearance="simple"}
+## Purpose
+
+This weekly report tracks Urgent and Emergency Care (UEC) Priority 1 metrics across ICB and site levels to support winter resilience and align with NHS strategic goals of shifting care from hospital to community. Using ECDS and ONS data, it monitors age-stratified attendance rates (per 100,000) and quantifies avoidable Type 1 ED presentations by chief complaint, GP practice, and LSOA locality.
+
+By tracking 4-hour performance, 12-hour wait times, and total dwell time—with a dedicated focus on the frail elderly (65+)—the report evaluates operational throughput and models potential capacity achieved by directing non-urgent care to local primary services.
+:::
+
+::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
+### View Additional Context
+
+- **Target Population Focus:** Primary focus is directed toward the older adult demographic (Age 65+ / Frailty cohorts) to evaluate local service provision and localised ndefinedndefineddemand drivers across primary, community, and
+
+- Core Analytical Domains:
+
+  - **Demand & Context:** Demographic breakdown of raw and population-weighted ED attendances (per 100,000 ONS population), mapped by chief complaint, GP practice, and LSOA to pinpoint avoidable activity and model potential efficiency gains.
+
+  - **Operational Performance:** System flow and waiting times, specifically tracking 4-hour and 12-hour ED performance metrics alongside overall length of stay in the department.
+
+  - **ED Alternatives & Community Pathways:** Monitoring uptake, capacity, and diversion efficacy across Virtual Wards, Urgent Community Response (UCR) referrals, and SWAST ambulance outcomes (See & Treat / Hear & Treat).
+
+  - **Data Refresh & Governance:** Operational ED metrics derived from ECDS are updated weekly. Community and ambulance metrics (CSDS, VW Sitrep, SWAST) operate on bi-weekly or monthly refresh cycles subject to standard reporting lags.
+:::
+
+## Attendances 
+
+<small>Age Profile Analysis: Weekly Trends & Spot-Week Avoidable Activity</small>
+
+::: {.panel-tabset .nav-pills}
+### Total Attendances
+
+```{r Attendances}
+#| echo: false
+#| warning: false
+
+plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Attendances")
+
+```
+
+
+- Spot Week :
+
+```{r}
+#| echo: false
+#| warning: false
+
+#  Attendances By Chief Complaint
+
+# Custom palette (NHS Corporate Palette)
+custom_colors <- c("#005EB8", "#00A499", "#41B6E6", "#D85B53", "#4C6272", "#8A1538", "#E8EDEE", "#768692")
+
+# Distinct
+df_colors <- df_spot |> 
+  filter(DataType == "Attendances") |>  # HERE !!
+  distinct(Grp) |> 
+  mutate(color = custom_colors[1:n()])
+
+# Add Colours
+df_pie_data <- df_spot |> 
+  filter(DataType == "Attendances") |>  # HERE !!
+  left_join(df_colors, by = "Grp")
+
+# Construct Plotly figure using category-mapped custom palette
+plot_ly() |> 
+  # Chart 1: 0-18
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "0-18"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "0-18",
+    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0, 0.31)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("0-18"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 2: 19-64
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "19-64"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "19-64",
+    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.34, 0.65)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("19-64"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 3: 65+
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "65+"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "65+",
+    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.68, 0.99)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("65+"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  layout(
+    title = list(
+      text = paste0(
+        "<b>Total Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    showlegend = TRUE,
+    legend = list(
+      orientation = "h",
+      x = 0.5,
+      xanchor = "center",
+      y = -0.12
+    ),
+    margin = list(l = 10, r = 10, t = 70, b = 60)
+  )
+
+
+```
+
+
+```{r Commentary 2}
+#| warning: false
+
+# Data 
+dfc2 <- df_spot |> 
+   filter(DataType == "Attendances") # HERE !!
+
+# Strings for Each Demography
+commentary_0_18  <- generate_age_commentary(dfc2, "0-18")
+commentary_19_64 <- generate_age_commentary(dfc2, "19-64")
+commentary_65_plus <- generate_age_commentary(dfc2, "65+")
+
+# Combine
+commentary_summary2 <- paste(commentary_0_18, commentary_19_64, commentary_65_plus, sep = "<br><br>")
+
+```
+
+`r commentary_summary2`
+
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
+
+
+### Rate Of Attendances
+
+```{r Rate Of Attendances ICB}
+#| echo: false
+#| warning: false
+
+# ONS All
+df_ons_lkp <- df_ons |> 
+  group_by(StpCode) |> 
+  summarise(Population = sum(Population))
+
+# Data All 
+df_summary_rate <- df_clean %>%
+  mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+  group_by(Week, StpCode, ICB) %>%
+  summarise(Attendances  = n(), .groups = "drop") |> 
+  left_join(df_ons_lkp, by = join_by(StpCode)) |> 
+  mutate(Rate_per_100k = (Attendances / Population) * 100000)
+
+# Plot All
+df_summary_rate |> 
+  plot_ly(x = ~Week, y = ~Rate_per_100k, color = ~ICB, type = "scatter", mode = "lines+markers",marker = list(size = 6),
+          line = list(width = 2)) %>%
+  layout(
+    title = list(text = "Weekly ED Attendance Rate per 100,000 Population"),
+    yaxis = list(title = list(text = "Rate per 100k")),
+    xaxis = list(
+      title = "Week",
+      range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+      rangeslider = list(visible = TRUE),
+      rangeselector = list(
+        x = 0.75, 
+        y = 1.0, 
+        xanchor = "right",
+        yanchor = "top",
+        buttons = list(
+          list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+          list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+          list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+          list(step = "all", label = "All")
+        )
+      )
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = "2026-09-01",
+        x1 = "2026-09-01",
+        y0 = 0,
+        y1 = 1,
+        yref = "paper",
+        line = list(color = "#d9534f", width = 2, dash = "dash")
+      )
+    ),
+    annotations = list(policy_annotation)
+  )
+
+```
+
+- By Age :
+
+```{r Rate Of Attendances Age}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+
+# ONS Age
+df_ons_age_lkp <- df_ons |> 
+  select(StpCode, AgeBand, Population)
+
+# Data All 
+df_summary_age_rate <- df_clean %>%
+  filter(Week >= lkp_12_week) |> 
+  mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+  group_by(Week, StpCode, AgeBand, ICB) %>%
+  summarise(Attendances  = n(), .groups = "drop") |> 
+  left_join(df_ons_age_lkp, by = join_by(StpCode, AgeBand)) |> 
+  mutate(Rate_per_100k = (Attendances / Population) * 100000)
+
+# Plot
+df_summary_age_rate |> 
+  ggplot(aes(x = Week, y = Rate_per_100k, color = AgeBand, group = AgeBand)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.5) +
+  facet_wrap(~ ICB, ncol = 3, scales = "fixed") +
+  scale_color_manual(
+    values = c("0-18"  = "#2b83ba", "19-64" = "#fdae61", "65+"   = "#d7191c")) +
+  scale_y_continuous(
+    labels = comma_format()
+  ) +
+  labs(
+    title = "Emergency Department Attendance Rates by Age Band across South West ICBs",
+    subtitle = "Weekly ED Attendances Per 100,000 Population (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Attendance Rate per 100k Population",
+    color = "Age Band"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+
+```
+
+- Spot Week :
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Avoidable Attendances By Chief Complaint
+
+# Custom palette (NHS Corporate Palette)
+custom_colors <- c("#005EB8", "#00A499", "#41B6E6", "#D85B53", "#4C6272", "#8A1538", "#E8EDEE", "#768692")
+
+# Distinct
+df_colors <- df_spot |> 
+  filter(DataType == "Avoid_Attendances") |>  # HERE !!
+  distinct(Grp) |> 
+  mutate(color = custom_colors[1:n()])
+
+# Add Colours
+df_pie_data <- df_spot |> 
+  filter(DataType == "Avoid_Attendances") |>  # HERE !!
+  left_join(df_colors, by = "Grp")
+
+# Construct Plotly figure using category-mapped custom palette
+plot_ly() |> 
+  # Chart 1: 0-18
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "0-18"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "0-18",
+    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0, 0.31)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("0-18"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 2: 19-64
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "19-64"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "19-64",
+    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.34, 0.65)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("19-64"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  # Chart 3: 65+
+  add_pie(
+    data = df_pie_data |> filter(AgeBand == "65+"),
+    labels = ~Grp,
+    values = ~Total_Attendances,
+    hole = 0.5,
+    name = "65+",
+    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
+    domain = list(x = c(0.68, 0.99)),
+    textinfo = "percent",
+    hoverinfo = "label+value+percent",
+    marker = list(
+      colors = get_chart_colors("65+"), 
+      line = list(color = "#FFFFFF", width = 1.5)
+    )
+  ) |> 
+  layout(
+    title = list(
+      text = paste0(
+        "<b>Avoidable Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    showlegend = TRUE,
+    legend = list(
+      orientation = "h",
+      x = 0.5,
+      xanchor = "center",
+      y = -0.12
+    ),
+    margin = list(l = 10, r = 10, t = 70, b = 60)
+  )
+
+
+    
+```
+
+
+```{r Commentary 1}
+#| warning: false
+
+# Data 
+dfc1 <- df_spot |> 
+   filter(DataType == "Avoid_Attendances") # HERE !!
+
+# Strings for Each Demography
+commentary_0_18  <- generate_age_commentary(dfc1, "0-18")
+commentary_19_64 <- generate_age_commentary(dfc1, "19-64")
+commentary_65_plus <- generate_age_commentary(dfc1, "65+")
+
+# Combine
+commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plus, sep = "<br><br>")
+
+```
+
+`r commentary_summary`
+
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
+
+### Attendance Map
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Data
+map_data <- summary_df %>%
+  filter(Week == max(Week, na.rm = TRUE)) |>
+  group_by(Week, OrganisationName) %>%
+  summarise(
+    `4Hours`      = sum(`4Hours`, na.rm = TRUE),
+    `4-12Hours`   = sum(`4-12Hours`, na.rm = TRUE),
+    `12Hours`     = sum(`12Hours`, na.rm = TRUE),
+    `Attendances` = sum(`Attendances`, na.rm = TRUE),
+    .groups       = "drop"
+  ) %>%
+  inner_join(site_coords, by = "OrganisationName")
+
+# 2. Define continuous color palettes (1 per line)
+pal_att  <- colorNumeric(palette = "YlOrRd", domain = map_data$Attendances) 
+pal_h4   <- colorNumeric(palette = "YlOrRd", domain = map_data$`4Hours`)
+pal_h412 <- colorNumeric(palette = "YlOrRd", domain = map_data$`4-12Hours`)
+pal_h12  <- colorNumeric(palette = "YlOrRd", domain = map_data$`12Hours`)
+
+map_data <- map_data %>%
+  mutate(
+    col_att  = pal_att(Attendances),
+    col_h4   = pal_h4(`4Hours`),
+    col_h412 = pal_h412(`4-12Hours`),
+    col_h12  = pal_h12(`12Hours`)
+  )
+
+# 3. Dynamic radius
+total_attendances <- sum(map_data$Attendances, na.rm = TRUE)
+dynamic_radius    <- pmin(pmax(round(log10(total_attendances) * 5), 15), 45)
+
+# Define title HTML element
+map_title <- HTML(paste0("
+  <div style='
+    background-color: rgba(255, 255, 255, 0.9);
+    padding: 8px 14px;
+    border-radius: 6px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    font-family: Arial, sans-serif;
+  '>
+    <h3 style='margin: 0 0 4px 0; color: #2c3e50; font-size: 16px;'>A&E Type 1 Activity & Wait Times Density</h3>
+    <p style='margin: 0 0 2px 0; color: #7f8c8d; font-size: 11px;'>South West Region | Site Distribution</p>
+    <p style='margin: 0; color: #7f8c8d; font-size: 10px; font-style: italic;'>Week Ending (", format(max(map_data$Week), "%d %b %Y"), ")</p>
+  </div>
+"))
+
+
+# 4. Build Leaflet map with title control
+leaflet(map_data) %>%
+  addTiles() %>%
+  # Title Control Box
+  addControl(html = map_title, position = "topleft") %>%
+  
+  
+  # Heatmap Base Layers
+  addHeatmap(
+    data = map_data, lng = ~lng, lat = ~lat, intensity = ~`Attendances`,
+    blur = dynamic_radius * 0.8, max = max(map_data$`Attendances`, na.rm = TRUE),
+    radius = dynamic_radius, group = "Attendances"
+  ) %>%
+  addHeatmap(
+    data = map_data, lng = ~lng, lat = ~lat, intensity = ~`4Hours`,
+    blur = dynamic_radius * 0.8, max = max(map_data$`4Hours`, na.rm = TRUE),
+    radius = dynamic_radius, group = "4 Hours"
+  ) %>%
+  addHeatmap(
+    data = map_data, lng = ~lng, lat = ~lat, intensity = ~`4-12Hours`,
+    blur = dynamic_radius * 0.8, max = max(map_data$`4-12Hours`, na.rm = TRUE),
+    radius = dynamic_radius, group = "4-12 Hours"
+  ) %>%
+  addHeatmap(
+    data = map_data, lng = ~lng, lat = ~lat, intensity = ~`12Hours`,
+    blur = dynamic_radius * 0.8, max = max(map_data$`12Hours`, na.rm = TRUE),
+    radius = dynamic_radius, group = "12 Hours"
+  ) %>%
+  
+  # Circle Markers
+  addCircleMarkers(
+    lng = ~lng, lat = ~lat,
+    radius = ~sqrt(Attendances) / 3,
+    color = "#333333",
+    fillColor = ~col_att,
+    fillOpacity = 0.85,
+    stroke = TRUE,
+    weight = 1.5,
+    layerId = ~OrganisationName,
+    options = markerOptions(
+      attendances = map_data$Attendances,       h4          = map_data$`4Hours`,
+      h412        = map_data$`4-12Hours`,
+      h12         = map_data$`12Hours`,
+      c_att       = map_data$col_att,
+      c_h4        = map_data$col_h4,
+      c_h412      = map_data$col_h412,
+      c_h12       = map_data$col_h12
+    ),
+    popup = ~paste0(
+      "<strong>", OrganisationName, "</strong><br/>",
+      "<strong>Week Ending:</strong> ", format(max(map_data$Week), "%d %b %Y"), "<br/><hr/>",
+      "<strong>Attendances:</strong> ", format(`Attendances`, big.mark = ","), "<br/>",
+      "<strong>&lt;4 Hours:</strong> ", format(`4Hours`, big.mark = ","), "<br/>",
+      "<strong>4-12 Hours:</strong> ", format(`4-12Hours`, big.mark = ","), "<br/>",
+      "<strong>12+ Hours:</strong> ", format(`12Hours`, big.mark = ",")
+    )
+  ) %>%
+  
+  # Radio selection controls
+  addLayersControl(
+    baseGroups = c("Attendances", "4 Hours", "4-12 Hours", "12 Hours"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  
+  # JS Listener for radius and fill color sync
+  onRender("
+    function(el, x) {
+      var map = this;
+      
+      map.on('baselayerchange', function(e) {
+        var activeGroup = e.name;
+        
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options.attendances) {
+            var val = 0;
+            var col = '#33a02c';
+            
+            if (activeGroup === 'Attendances') {
+              val = layer.options.attendances;
+              col = layer.options.c_att;
+            } else if (activeGroup === '4 Hours') {
+              val = layer.options.h4;
+              col = layer.options.c_h4;
+            } else if (activeGroup === '4-12 Hours') {
+              val = layer.options.h412;
+              col = layer.options.c_h412;
+            } else if (activeGroup === '12 Hours') {
+              val = layer.options.h12;
+              col = layer.options.c_h12;
+            }
+            
+            var newRadius = val > 0 ? Math.sqrt(val) / 3 : 2;
+            layer.setRadius(newRadius);
+            layer.setStyle({ fillColor: col });
+          }
+        });
+      });
+    }
+  ")
+
+```
+
+### Attendance Table
+
+```{r}
+#| echo: false
+#| warning: false
+
+summary_df |>
+  group_by(ProviderCode, OrganisationName, Stp, AgeBand) |>
+  summarise(
+    Total_4Hours = sum(`4Hours`, na.rm = TRUE),
+    Total_4_12Hours = sum(`4-12Hours`, na.rm = TRUE),
+    Total_12Hours = sum(`12Hours`, na.rm = TRUE),
+    Total_Attendances = sum(Attendances, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate_all(as.factor) |> 
+  datatable(
+    rownames = FALSE,
+    filter = "top",
+    extensions = c("Buttons"),
+    colnames = c(
+      "Provider Code" = "ProviderCode",
+      "Organisation" = "OrganisationName",
+      "STP/ICB" = "Stp",
+      "Age Band" = "AgeBand",
+      "< 4 Hours" = "Total_4Hours",
+      "4–12 Hours" = "Total_4_12Hours",
+      "12+ Hours" = "Total_12Hours",
+      "Total Attendances" = "Total_Attendances"
+    ),
+    options = list(
+      pageLength = 5,
+      lengthMenu = list(c(5, 10, 25, 50, -1), c("5", "10", "25", "50", "All")),
+      autoWidth = TRUE,
+      dom = "Blfrtip", # Added 'l' to display the length selection dropdown
+      buttons = c("copy", "csv", "excel", "pdf"),
+      columnDefs = list(
+        list(className = "dt-right", targets = 4:7)
+      )
+    )
+  ) |>
+  formatCurrency(
+    columns = 5:8,
+    currency = "",
+    interval = 3,
+    mark = ",",
+    digits = 0
+  )
+
+
+```
+
+:::
+
+
+## Avoidable Attendances
+
+::: {.panel-tabset .nav-pills}
+
+### Total Avoidable
+
+```{r}
+
+#| echo: false
+#| warning: false
+
+plot_attendance_summary(summary_df_avoidable, "Total Volume Of Avoidable Attendances & By Age", "Avoidable Attendances")
+
+```
+
+### Percentage Of Avoidable
+
+```{r}
+
+#| echo: false
+#| warning: false
+
+# Total
+df_overall <- summary_df |> 
+  group_by(Week) |> 
+  summarise(Attendances = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  inner_join(
+    summary_df_avoidable |> 
+      group_by(Week) |> 
+      summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop"),
+    by = "Week"
+  ) |> 
+  mutate(pct_avoidable = (Avoid / Attendances) * 100) 
+#
+
+# Age 
+df_ageband <- summary_df |> 
+  group_by(Week, AgeBand) |> 
+  summarise(Attendances = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  inner_join(
+    summary_df_avoidable |> 
+      group_by(Week, AgeBand) |> 
+      summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop"),
+    by = c("Week", "AgeBand")
+  ) |> 
+  mutate(pct_avoidable = (Avoid / Attendances) * 100) 
+# 
+
+# ICB 
+df_stp <- summary_df |> 
+  mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+  group_by(Week, ICB) |> 
+  summarise(Attendances = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  inner_join(
+    summary_df_avoidable |> 
+      mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+      group_by(Week, ICB) |> 
+      summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop"),
+    by = c("Week", "ICB")
+  ) |> 
+  mutate(pct_avoidable = (Avoid / Attendances) * 100) 
+#
+
+# Trust 
+df_org <- summary_df |> 
+  group_by(Week, OrganisationName) |> 
+  summarise(Attendances = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  inner_join(
+    summary_df_avoidable |> 
+      group_by(Week, OrganisationName) |> 
+      summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop"),
+    by = c("Week", "OrganisationName")
+  ) |> 
+  mutate(pct_avoidable = (Avoid / Attendances) * 100) 
+
+# Determine unique categories
+unique_agebands <- unique(df_ageband$AgeBand)
+n_agebands <- length(unique_agebands)
+
+unique_stps <- unique(df_stp$ICB)
+n_stps <- length(unique_stps)
+
+unique_orgs <- unique(df_org$OrganisationName)
+n_orgs <- length(unique_orgs)
+
+# Configure visibility vectors for dynamic dropdown
+vis_overall <- c(TRUE,  rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(FALSE, n_orgs))
+vis_ageband <- c(FALSE, rep(TRUE, n_agebands),  rep(FALSE, n_stps), rep(FALSE, n_orgs))
+vis_stp     <- c(FALSE, rep(FALSE, n_agebands), rep(TRUE, n_stps),  rep(FALSE, n_orgs))
+vis_org     <- c(FALSE, rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(TRUE, n_orgs))
+
+# Extract latest point annotation for "Total Only"
+latest_overall <- df_overall |> 
+  filter(Week == max(Week))
+
+latest_overall_annotation <- list(
+  x = latest_overall$Week,
+  y = latest_overall$pct_avoidable,
+  text = paste0("<b>Total</b>: ", scales::comma(latest_overall$pct_avoidable)),
+  showarrow = TRUE,
+  arrowhead = 2,
+  arrowsize = 0.8,
+  ax = 30,
+  ay = -20,
+  font = list(size = 10),
+  bgcolor = "rgba(255, 255, 255, 0.85)",
+  bordercolor = "#1f77b4",
+  borderwidth = 1.5
+)
+
+# Extract latest points annotations for "AgeBand"
+latest_ageband <- df_ageband |> 
+  group_by(AgeBand) |> 
+  filter(Week == max(Week)) |> 
+  ungroup()
+
+latest_ageband_annotations <- lapply(1:nrow(latest_ageband), function(i) {
+  row <- latest_ageband[i, ]
+  band_color <- if (exists("age_palette")) unname(age_palette[as.character(row$AgeBand)]) else NA
+  if (is.na(band_color)) band_color <- "#cccccc"
+  list(
+    x = row$Week,
+    y = row$pct_avoidable,
+    text = paste0("<b>", row$AgeBand, "</b>: ", scales::comma(row$pct_avoidable)),
+    showarrow = TRUE,
+    arrowhead = 2,
+    arrowsize = 0.8,
+    ax = 30,
+    ay = -20,
+    font = list(size = 10),
+    bgcolor = "rgba(255, 255, 255, 0.85)",
+    bordercolor = band_color,
+    borderwidth = 1.5
+  )
+})
+
+# Build plot
+p <- plot_ly() |> 
+  # Trace 1: Total
+  add_trace(
+    data = df_overall,
+    x = ~Week,
+    y = ~pct_avoidable,
+    type = "scatter",
+    mode = "lines+markers",
+    name = "Total",
+    marker = list(size = 6),
+    line = list(color = "#1f77b4"),
+    visible = TRUE
+  )
+
+# Traces 2+: By AgeBand
+for (band in unique_agebands) {
+  df_sub <- df_ageband |> filter(AgeBand == band)
+  band_color <- if (exists("age_palette")) unname(age_palette[as.character(band)]) else NA
+  if (is.na(band_color)) band_color <- "#1f77b4"
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~pct_avoidable,
+      type = "scatter",
+      mode = "lines+markers",
+      name = band,
+      marker = list(size = 6, color = band_color),
+      line = list(color = band_color),
+      visible = FALSE
+    )
+}
+
+# Traces By STP
+for (stp_item in unique_stps) {
+  df_sub <- df_stp |> filter(ICB == stp_item)
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~pct_avoidable,
+      type = "scatter",
+      mode = "lines+markers",
+      name = stp_item,
+      marker = list(size = 6),
+      visible = FALSE
+    )
+}
+
+# Traces By Organisation
+for (org in unique_orgs) {
+  df_sub <- df_org |> filter(OrganisationName == org)
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~pct_avoidable,
+      type = "scatter",
+      mode = "lines+markers",
+      name = org,
+      marker = list(size = 6),
+      visible = FALSE
+    )
+}
+
+# Apply Layout & Updatemenus
+p |> 
+  layout(
+    title = list(text = "Proportion of Avoidable ED Attendances (%)"),
+    yaxis = list(title = list(text = "Avoidable ED Attendances (%)")),
+    xaxis = list(
+      title = "Week",
+      range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+      rangeslider = list(visible = TRUE),
+      rangeselector = list(
+        x = 0.75, 
+        y = 1.1, 
+        xanchor = "right",
+        yanchor = "top",
+        buttons = list(
+          list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+          list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+          list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+          list(step = "all", label = "All")
+        )
+      )
+    ),
+    updatemenus = list(
+      list(
+        type = "dropdown",
+        direction = "down",
+        x = -0.05,
+        y = 1.25,
+        xanchor = "left",
+        yanchor = "top",
+        buttons = list(
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_overall),
+              list(annotations = list(latest_overall_annotation, policy_annotation))
+            ),
+            label = "View: Total Only"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_ageband),
+              list(annotations = c(latest_ageband_annotations, list(policy_annotation)))
+            ),
+            label = "View: By AgeBand"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_stp),
+              list(annotations = list(policy_annotation))
+            ),
+            label = "View: By ICB"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_org),
+              list(annotations = list(policy_annotation))
+            ),
+            label = "View: By Trust"
+          )
+        )
+      )
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = "2026-09-01",
+        x1 = "2026-09-01",
+        y0 = 0,
+        y1 = 1,
+        yref = "paper",
+        line = list(color = "#d9534f", width = 2, dash = "dash")
+      )
+    ),
+    annotations = list(latest_overall_annotation, policy_annotation)
+  )
+
+```
+
+### Estimated Savings in Cost
+
+```{r}
+
+#| echo: false
+#| warning: false
+
+lkp_ed_visit_cost <- 271.64
+
+# Total
+df_overall <- summary_df_avoidable |> 
+  group_by(Week) |> 
+  summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  mutate(Cost_Saving = round(Avoid * lkp_ed_visit_cost, 0))
+
+# Age 
+df_ageband <- summary_df_avoidable |> 
+  group_by(Week, AgeBand) |> 
+  summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  mutate(Cost_Saving = round(Avoid * lkp_ed_visit_cost, 0))
+
+# ICB 
+df_stp <- summary_df_avoidable |> 
+  mutate(ICB = if_else(nchar(Stp) > 32, stringr::str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
+  group_by(Week, ICB) |> 
+  summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  mutate(Cost_Saving = round(Avoid * lkp_ed_visit_cost, 0))
+
+# Trust 
+df_org <- summary_df_avoidable |> 
+  group_by(Week, OrganisationName) |> 
+  summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
+  mutate(Cost_Saving = round(Avoid * lkp_ed_visit_cost, 0))
+
+# Determine unique categories
+unique_agebands <- unique(df_ageband$AgeBand)
+n_agebands <- length(unique_agebands)
+
+unique_stps <- unique(df_stp$ICB)
+n_stps <- length(unique_stps)
+
+unique_orgs <- unique(df_org$OrganisationName)
+n_orgs <- length(unique_orgs)
+
+# Configure visibility vectors for dynamic dropdown
+vis_overall <- c(TRUE,  rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(FALSE, n_orgs))
+vis_ageband <- c(FALSE, rep(TRUE, n_agebands),  rep(FALSE, n_stps), rep(FALSE, n_orgs))
+vis_stp     <- c(FALSE, rep(FALSE, n_agebands), rep(TRUE, n_stps),  rep(FALSE, n_orgs))
+vis_org     <- c(FALSE, rep(FALSE, n_agebands), rep(FALSE, n_stps), rep(TRUE, n_orgs))
+
+# Extract latest point annotation for "Total Only"
+latest_overall <- df_overall |> 
+  filter(Week == max(Week))
+
+latest_overall_annotation <- list(
+  x = latest_overall$Week,
+  y = latest_overall$Cost_Saving,
+  text = paste0("<b>Total</b>: ", scales::dollar(latest_overall$Cost_Saving, prefix = "£")),
+  showarrow = TRUE,
+  arrowhead = 2,
+  arrowsize = 0.8,
+  ax = 30,
+  ay = -20,
+  font = list(size = 10),
+  bgcolor = "rgba(255, 255, 255, 0.85)",
+  bordercolor = "#1f77b4",
+  borderwidth = 1.5
+)
+
+# Extract latest points annotations for "AgeBand"
+latest_ageband <- df_ageband |> 
+  group_by(AgeBand) |> 
+  filter(Week == max(Week)) |> 
+  ungroup()
+
+latest_ageband_annotations <- lapply(1:nrow(latest_ageband), function(i) {
+  row <- latest_ageband[i, ]
+  band_color <- if (exists("age_palette")) unname(age_palette[as.character(row$AgeBand)]) else NA
+  if (is.na(band_color)) band_color <- "#cccccc"
+  list(
+    x = row$Week,
+    y = row$Cost_Saving,
+    text = paste0("<b>", row$AgeBand, "</b>: ", scales::dollar(row$Cost_Saving, prefix = "£")),
+    showarrow = TRUE,
+    arrowhead = 2,
+    arrowsize = 0.8,
+    ax = 30,
+    ay = -20,
+    font = list(size = 10),
+    bgcolor = "rgba(255, 255, 255, 0.85)",
+    bordercolor = band_color,
+    borderwidth = 1.5
+  )
+})
+
+# Build plot
+p <- plot_ly() |> 
+  # Trace 1: Total
+  add_trace(
+    data = df_overall,
+    x = ~Week,
+    y = ~Cost_Saving,
+    type = "scatter",
+    mode = "lines+markers",
+    name = "Total",
+    marker = list(size = 6),
+    line = list(color = "#1f77b4"),
+    visible = TRUE
+  )
+
+# Traces 2+: By AgeBand
+for (band in unique_agebands) {
+  df_sub <- df_ageband |> filter(AgeBand == band)
+  band_color <- if (exists("age_palette")) unname(age_palette[as.character(band)]) else NA
+  if (is.na(band_color)) band_color <- "#1f77b4"
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~Cost_Saving,
+      type = "scatter",
+      mode = "lines+markers",
+      name = band,
+      marker = list(size = 6, color = band_color),
+      line = list(color = band_color),
+      visible = FALSE
+    )
+}
+
+# Traces By STP
+for (stp_item in unique_stps) {
+  df_sub <- df_stp |> filter(ICB == stp_item)
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~Cost_Saving,
+      type = "scatter",
+      mode = "lines+markers",
+      name = stp_item,
+      marker = list(size = 6),
+      visible = FALSE
+    )
+}
+
+# Traces By Organisation
+for (org in unique_orgs) {
+  df_sub <- df_org |> filter(OrganisationName == org)
+  
+  p <- p |> 
+    add_trace(
+      data = df_sub,
+      x = ~Week,
+      y = ~Cost_Saving,
+      type = "scatter",
+      mode = "lines+markers",
+      name = org,
+      marker = list(size = 6),
+      visible = FALSE
+    )
+}
+
+# Apply Layout & Updatemenus
+p |> 
+  layout(
+    title = list(text = "Estimated Cost of Avoidable ED Attendances (£)"),
+    yaxis = list(
+      title = list(text = "Estimated Cost (£)"),
+      tickprefix = "£"
+    ),
+    xaxis = list(
+      title = "Week",
+      range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+      rangeslider = list(visible = TRUE),
+      rangeselector = list(
+        x = 0.75, 
+        y = 1.1, 
+        xanchor = "right",
+        yanchor = "top",
+        buttons = list(
+          list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+          list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+          list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+          list(step = "all", label = "All")
+        )
+      )
+    ),
+    updatemenus = list(
+      list(
+        type = "dropdown",
+        direction = "down",
+        x = -0.05,
+        y = 1.25,
+        xanchor = "left",
+        yanchor = "top",
+        buttons = list(
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_overall),
+              list(annotations = list(latest_overall_annotation, policy_annotation))
+            ),
+            label = "View: Total Only"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_ageband),
+              list(annotations = c(latest_ageband_annotations, list(policy_annotation)))
+            ),
+            label = "View: By AgeBand"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_stp),
+              list(annotations = list(policy_annotation))
+            ),
+            label = "View: By ICB"
+          ),
+          list(
+            method = "update",
+            args = list(
+              list(visible = vis_org),
+              list(annotations = list(policy_annotation))
+            ),
+            label = "View: By Trust"
+          )
+        )
+      )
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = "2026-09-01",
+        x1 = "2026-09-01",
+        y0 = 0,
+        y1 = 1,
+        yref = "paper",
+        line = list(color = "#d9534f", width = 2, dash = "dash")
+      )
+    ),
+    annotations = list(latest_overall_annotation, policy_annotation)
+  )
+
+
+```
+
+:::
+
+
+
+## 4 & 12 Hour Performance
+
+::: {.panel-tabset .nav-pills}
+
+### Region
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+
+weekly_summary <- summary_df %>%
+  filter(Week >= lkp_12_week) %>%
+  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+  group_by(Week) %>%
+  summarise(
+    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+# Reshape data to long format
+plot_data <- weekly_summary %>%
+  pivot_longer(
+    cols = starts_with("pct_"),
+    names_to = "Wait_Category",
+    values_to = "Percentage"
+  ) %>%
+  mutate(Wait_Category = factor(
+    Wait_Category,
+    levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
+    labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
+  ))
+
+# Filter latest week data points for text annotations
+latest_week_data <- plot_data %>%
+  filter(Week == max(Week))
+
+# Interactive Plotly implementation
+plot_data %>%
+  plot_ly(
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "lines+markers",
+    hovertemplate = "<b>%{fullData.name}</b><br>Week Ending: %{x|%d %b %Y}<br>Percentage: %{y:.1f}%<extra></extra>"
+  ) %>%
+  # Add value labels on the latest week points
+  add_trace(
+    data = latest_week_data,
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "text",
+    text = ~sprintf("%.1f%%", Percentage),
+    textposition = "top left",
+    showlegend = FALSE,
+    hoverinfo = "skip",
+    inherit = FALSE
+  ) %>%
+  layout(
+    title = list(
+      text = paste0(
+      "<b>Weekly Emergency Department Wait-Time Performance Trends by Region</b>",
+      "<br>",
+      "<sup><span style='color:gray; font-size:12px;'>",
+      "Percentages of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+      "</span></sup>"
+    ),
+    x = 0.05
+  ),
+  margin = list(t = 100),
+    xaxis = list(
+      title = "Week Ending",
+      dtick = 1209600000, # 2 weeks in milliseconds
+      tickformat = "%d %b",
+      showgrid = FALSE
+    ),
+    yaxis = list(
+      title = "Percentage of Attendances",
+      range = c(0, 100),
+      ticksuffix = "%"
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = 0, x1 = 1, xref = "paper",
+        y0 = 76, y1 = 76, yref = "y",
+        line = list(color = "#1b7837", width = 1.5, dash = "dash")
+      )
+    ),
+    annotations = list(
+      list(
+        x = min(plot_data$Week, na.rm = TRUE), y = 78, xref = "x", yref = "y",
+        text = "<b>76% Target</b>", showarrow = FALSE, xanchor = "left",
+        font = list(color = "#1b7837", size = 11)
+      )
+    ),
+    legend = list(
+      title = list(text = "<b>Performance Buckets</b>"),
+      orientation = "h", x = 0.3, y = -0.2
+    )
+  )
+
+
+```
+
+### ICB
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+
+
+weekly_summary <- summary_df %>%
+  filter(Week >= lkp_12_week) |> 
+  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+  group_by(Week, Stp) %>%
+  summarise(
+    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+
+# Reshape data to long format
+plot_data <- weekly_summary %>%
+  pivot_longer(
+    cols = starts_with("pct_"),
+    names_to = "Wait_Category",
+    values_to = "Percentage"
+  ) %>%
+  mutate(Wait_Category = factor(
+    Wait_Category,
+    levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
+    labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
+  ))
+
+# Multi-line trend chart faceted by Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = min(plot_data$Week),
+    y = 94,
+    label = "76% Target",
+    colour = "#1b7837",
+    hjust = 0,
+    fontface = "bold"
+  ) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### Age 0-18
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+
+plot_wait_times_by_age(summary_df, "0-18")
+
+```
+
+### Age 19-64
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+ 
+plot_wait_times_by_age(summary_df, "19-64")
+
+```
+
+### Age 65+
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+#| fig-align: "center"
+
+plot_wait_times_by_age(summary_df, "65+")
+
+```
+
+
+:::
+
+## Time Spent In ED Department 
+
+::: {.panel-tabset .nav-pills}
+
+### Average Time
+
+```{r}
+#| echo: false
+#| warning: false
+
+plot_time_summary(df_clean, "Average Time Spent In ED Department & By Age", "Minutes")
+
+```
+
+:::
+
+## Data Context & Definitions
+
+::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
+## Policy Change - Urgent and Emergency Care Recovery: Reducing Patient Harm Through Improved Flow
+
+**To:** Chairs and Chief Executives and Chairs of Integrated Care Boards, Acute, Community and Mental Health Providers  
+**From:** Regional Directors  
+**Date:** August 2026  
+**Subject:** Urgent and Emergency Care Recovery: Reducing Patient Harm Through Improved Flow  
+
+***
+
+Dear Colleagues,
+
+As we continue our preparations for winter and the delivery of our urgent and emergency care recovery plans, we are writing to highlight what remains one of the most significant risks to patient safety across our region: poor flow through the urgent and emergency care pathway.
+
+At every stage of the patient journey, delays create risk. Patients waiting for an ambulance response, patients cared for in ambulances outside emergency departments, patients receiving treatment in overcrowded clinical environments, and patients remaining in hospital longer than clinically necessary are all exposed to avoidable harm. Delays are associated with poorer patient experience, deterioration in clinical outcomes, increased risk of deconditioning and loss of independence, and place considerable pressure on staff striving to deliver safe and compassionate care.
+
+Whilst much attention is often placed on operational metrics, it is important that we remain focused on what these measures represent for patients. Category 2 ambulance response times, emergency department waiting times and delayed discharges are not simply performance indicators; they are proxies for the timeliness, safety and quality of care we provide.
+
+We must therefore collectively renew our focus on restoring the standards that patients have a right to expect. This includes achieving Category 2 ambulance response times of less than 25 minutes, whilst continuing to strive towards the constitutional ambition of 18 minutes. It includes recovering four-hour emergency department performance to a minimum of 82%, whilst maintaining our ambition to return to the constitutional standard of 95%. Equally, we must continue to reduce the number of patients experiencing exceptionally long waits, with 12-hour waits from arrival in emergency departments never exceeding 2% of attendances. These standards matter because excessive delays result in poorer patient outcomes and expose people to unnecessary risk.
+
+The most effective way to deliver sustained improvement in these measures is through better flow across the whole urgent and emergency care pathway. We are therefore setting out three actions to be implemented during August and demonstrably impacting from 1 September 2026.
+
+---
+
+### 1. Maximising Alternatives to Emergency Departments
+
+Many patients can receive more timely and appropriate care through services outside of the emergency department. Every opportunity should therefore be taken to direct patients to the right service first time.
+
+The current urgent care pathway does not consistently provide access to senior clinical decision-makers at the point of clinical assessment and navigation. As a result, opportunities to navigate patients towards community-based alternatives, including Virtual Wards and Urgent Community Response (UCR) services, may be missed. This contributes to avoidable hospital conveyance and admission, places additional pressure on acute services, and reduces the ability of systems to fully realise the benefits of existing community capacity.
+
+To address this, providers should ensure:
+
+* **Senior Clinical Decision-Maker Access:** Available to SWAST, NHS 111, Primary Care and Community Services for a minimum of 12 hours per day, seven days per week.
+* **Alternative Pathway Availability:** Alternative urgent care pathways, including UCR and Virtual Wards, are operational and accessible for a minimum of 12 hours per day, seven days per week.
+* **Active Patient Assessment:** Patients are actively assessed for, and where clinically appropriate, directed towards alternatives to Emergency Department attendance and hospital admission.
+* **Clinical Navigation Arrangements:** Clear clinical navigation arrangements are in place to support timely decision-making across organisational boundaries. Emerging best practice suggests this function may be most effectively delivered through a UEC or Community Single Point of Access (SPOA).
+
+This capacity should ensure that alternatives to Emergency Departments are available to support the relatively small cohort of patients that are responsible for the bulk of urgent care demand.
+
+#### Expected Outcome
+By strengthening clinical decision-making and improving access to alternative urgent care pathways, systems can reduce unnecessary Emergency Department attendances, avoid preventable admissions, increase utilisation of community services, and improve patient experience through care delivered closer to home.
+
+---
+
+### 2. Timely Ambulance Handovers
+
+Ambulance handover delays compromise patient care and reduce the availability of ambulance resources for patients awaiting urgent responses in the community.
+
+From **1 September 2026**, providers must ensure:
+
+1. Ambulance handovers do not exceed 45 minutes.
+2. Delivery achieves, as a minimum, the trajectories set within agreed organisational plans.
+3. Organisations continue to work towards the 15-minute constitutional standard.
+
+Patients deserve prompt access to definitive assessment and treatment on arrival at hospital, and ambulance crews should be available to respond to the next patient in need rather than caring for patients in queues outside emergency departments.
+
+To provide early notice of future expectations, from **1 January 2027** we will expect that no ambulance handover exceeds 30 minutes across any site within the region.
+
+---
+
+### 3. Improving Discharge Flow Seven Days a Week
+
+Delayed discharge affects not only the individual patient remaining in hospital but also those waiting for admission, assessment and treatment elsewhere in the system.
+
+Across acute, community and mental health settings, providers must achieve:
+
+* **Before Midday:** A minimum of 30% of all daily discharges, seven days per week.
+* **By 17:00:** A minimum of 80% of all daily discharges, seven days per week.
+
+Earlier discharge supports patient independence, reduces exposure to hospital-associated harms and creates the capacity required to ensure timely care for others entering the system.
+
+---
+
+### Building on Existing Foundations
+
+In addition to these new expectations, we expect providers and systems to ensure that they are delivering the actions agreed in 2024 arising from the South West Ambulance performance improvement Task and Finish groups. A reminder of the outputs agreed from that series of work is attached as **Appendix A**.
+
+---
+
+### A Shared Commitment to Safe and Timely Care
+
+These actions align closely with your existing recovery and improvement plans and reflect the recent correspondence regarding winter preparedness issued in the NHS England Winter planning letter. They should not be viewed as additional initiatives but as fundamental disciplines required to support safe and effective care throughout the year.
+
+We ask Boards to maintain a relentless focus on flow as a quality and safety priority. Crowded emergency departments, delayed handovers and prolonged hospital stays are not inevitable consequences of demand; they are symptoms of pathways that require improvement across organisational boundaries. The actions set out in this letter are intended to address those issues in ways that will have the greatest impact on patient outcomes, staff experience and system resilience.
+
+The coming months provide an opportunity to build stronger foundations ahead of winter. By improving flow, reducing delays and ensuring every patient receives care in the most appropriate setting, we can together reduce harm, improve outcomes and restore public confidence in urgent and emergency care services.
+
+---
+
+### Next Steps
+
+We are asking each Board to commit to these standards, and confirm the date that these standards will be in place. Where a board feels that it cannot meet these standards, we will require an explanation of why and details of what other actions organisations are taking to avoid harm arising from delays in the urgent care pathway.
+
+Attached as **Appendix B** and **Appendix C**, are Provider and ICB Board Assurance statements. Please ensure your board review and complete these statements by **21 August 2027** with returns sent to `[Insert generic e-mail address]`.
+
+The Region will monitor delivery of these flow priorities through a formal assurance process from September 2026. Trusts and systems will be expected to provide clear evidence of implementation and demonstrate sustained improvement against the required standards. Where delivery is off track, trajectories are not being met, or organisations cannot demonstrate that the required changes are in place, we will initiate prompt escalation through regional performance management arrangements. Boards and Chief Executives will be expected to personally account for progress and provide credible recovery actions.
+
+Thank you for your continued leadership and commitment to delivering safe, high-quality care for the populations we serve.
+
+Yours sincerely,
+
+**Sue Doheny**  
+Regional Director  
+
+**Dr Trevor Smith**  
+Regional Medical Director  
+
+**Jill Crook**  
+Regional Chief Nurse  
+
+**Martin Wilkinson**  
+Regional Chief Operating Officer  
+
+**Ben Roe**  
+Regional Clinical Quality and Improvement Director
+:::
+
+
+::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
+### View Avoidable ED Definition
+
+Avoidable (non-urgent) ED attendances here are defined as ED attendances for care that could have been reasonably provided elsewhere. As per NHS Digital (2020), the following HES/SNOMED codes make up the definition.
+
+Emergency Department Type
+
+| **Description**        | **HES code** | **ECDS code** |
+|------------------------|--------------|---------------|
+| Type 1 Emergency Dept. | 01           | 01            |
+
+Discharge status (attendance disposal)
+
+| **Description** | **HES code** | **ECDS (SNOMED) code** |
+|----|----|----|
+| Discharged with followup treatment by GP | 02 | 1077021000000100 |
+| Discharged no followup required | 03 | 182992009 |
+| Left department before treatment | 12 | 1066321000000107 |
+
+Investigation
+
+| **Description**      | **HES code** | **ECDS (SNOMED) code**  |
+|----------------------|--------------|-------------------------|
+| Urinalysis           | 06           | 27171005                |
+| Pregnancy test       | 21           | 167252002, 67900009     |
+| Dental investigation | 22           | 53115007                |
+| None                 | 24, blank    | 1088291000000101, blank |
+
+Treatment
+
+| **Description** | **HES code** | **ECDS (SNOMED) code** |
+|------------------------|------------------------|------------------------|
+| Guidance/advice only - written | 221 | 413334001 |
+| Guidance/advice only - verbal | 222 | Not applicable |
+| Recording vital signs | 30 | Not applicable |
+| Dental treatment | 56 | 81733005 |
+| Prescription/medicines prepped to take away | 57 | 266712008 |
+| None (consider guidance/advice option) | 99, blank | 183964008, blank |
+| Prescriptions (retired code) | 07 | Not applicable |
+
+Attendance category
+
+| **Description**                            | **HES code** | **ECDS code** |
+|--------------------------------------------|--------------|---------------|
+| First Accident & Emergency (ED) attendance | 1            | 1             |
+
+Arrival mode
+
+| **Description** | **HES code** | **ECDS (SNOMED) codes** |
+|------------------------|------------------------|------------------------|
+| Non-ambulance arrivals | Not 1 | 1048071000000103,1048061000000105,1047991000000102,1048001000000106 |
+
+## **References**
+
+1.  Mason, S., O'Keeffe, C., Jacques, R., Rimmer, M., and Ablard, S., (2017). Perspectives on the reasons for Emergency Department attendances across Yorkshire and the Humber. Centre for Urgent and Emergency Care Research (CURE), School of Health and Related Research, University of Sheffield. Available at <https://www.sheffield.ac.uk/polopoly_fs/1.730630!/file/CLAHRC_BMA_Final_Report.pdf>
+
+2.  NHS Digital, (2020). Non-urgent A&E attendances. Available at <https://web.archive.org/web/20210226213236/https:/digital.nhs.uk/data-and-information/data-tools-and-services/data-services/innovative-uses-of-data/demand-on-healthcare/unnecessary-a-and-e-attendances> \[note page has been archived\].
+:::
+
+::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
+### View Data Sources
+
+[ECDS guidance and documents](https://digital.nhs.uk/data-and-information/data-collections-and-data-sets/data-sets/emergency-care-data-set-ecds/ecds-guidance){target="_blank"}
+
+[ONS Population Estimates](https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/internalmigrationz5){target="_blank"}
+
+[Avoidable ED Attendances](https://github.com/nhsengland/ESA_Avoidable_ED_Attendances){target="_blank"}
+
+
+[Costs Major Emergency Departments (Type 1 A&E)](https://www.kingsfund.org.uk/insight-and-analysis/data-and-charts/key-facts-figures-nhs){target="_blank"}
+
+VW sitrep
+
+[CSDS](https://www.england.nhs.uk/statistics/statistical-work-areas/2-hour-urgent-community-response/){target="_blank"}
+
+SWAST
+
+<small>Source: NHS England South West Insights & Intelligence Team. Data updated weekly.</small>
+:::
+
+> Contact\
+> [**Euan Ives**](mailto:euan.ives@nhs.net)\
+>
+> South West Intelligence and Insights NHS England\
+> *Version 1.1*
+
+::: footer
+<img src="C:/Users/euan.ives/Desktop/R Stuff/www/footer.png" alt="Footer Image"/>
+:::
