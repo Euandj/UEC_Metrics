@@ -1,5 +1,5 @@
 ---
-title: "SW UEC Metrics 'Type 1'"
+title: "SW Winter UEC 'Type 1'"
 author: "Euan Ives - Insights & Intelligence Team"
 date: today
 date-format: "D MMMM YYYY"
@@ -38,7 +38,7 @@ format:
 formatted_date <- format(max(readRDS("C:/Users/euan.ives/Desktop/R Stuff/data/rds/Spot_Week_UEC.rds")$Week), "%d %b %Y")
 
 # Inject dynamic YAML title
-cat(sprintf("---\ntitle: \"SW UEC Metrics 'Type 1' (Week Ending %s)\"\n---\n", formatted_date))
+cat(sprintf("---\ntitle: \"SW Winter UEC 'Type 1' (Week Ending %s)\"\n---\n", formatted_date))
 
 ```
 
@@ -273,76 +273,6 @@ generate_age_commentary_time <- function(data, age_group) {
     sub_df$Group_Lower[2], sub_df$Percentage[2]*100,
     sub_df$Group_Lower[3], sub_df$Percentage[3]*100
   )
-}
-
-
-# Def Colours
-get_chart_colors <- function(age_group) {
-  df_pie_data |> 
-    filter(AgeBand == age_group) |> 
-    pull(color)
-}
-
-# Performance - 4 Hour , 12 Hour 
-plot_wait_times_by_age <- function(df, target_age_band, last_sunday) {
-  
-  plot_data <- df %>%
-    filter(Week >= lkp_12_week) %>%
-    mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
-    group_by(Week, AgeBand, Stp) %>%
-    summarise(
-      pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-      pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-      pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-      .groups = "drop"
-    ) %>%
-    filter(AgeBand == target_age_band) %>%
-    pivot_longer(
-      cols = starts_with("pct_"),
-      names_to = "Wait_Category",
-      values_to = "Percentage"
-    ) %>%
-    mutate(
-      Wait_Category = factor(
-        Wait_Category,
-        levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
-        labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
-      )
-    )
-  
-  ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
-    geom_line(linewidth = 1) +
-    geom_point(size = 2) +
-    geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
-    annotate(
-      "text",
-      x = min(plot_data$Week, na.rm = TRUE),
-      y = 94,
-      label = "76% Target",
-      colour = "#1b7837",
-      hjust = 0,
-      fontface = "bold"
-    ) +
-    facet_wrap(~ Stp) +
-    scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
-    scale_colour_manual(values = c(
-      "<4 Hours" = "#2166ac",
-      "4-12 Hours" = "#f4a582",
-      ">12 Hours" = "#b2182b"
-    )) +
-    labs(
-      title = paste("Weekly Emergency Department Wait-Time Performance Trends by ICB - Age Band:", target_age_band),
-      subtitle = "Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
-      x = "Week Ending",
-      y = "Percentage of Attendances",
-      colour = "Wait Duration"
-    ) +
-    theme_minimal() +
-    theme(
-      legend.position = "bottom",
-      panel.grid.minor = element_blank(),
-      strip.text = element_text(face = "bold", size = 10)
-    )
 }
 
 # Plotly Graphs All, Age, ICB & Trust 
@@ -820,6 +750,74 @@ plot_time_summary <- function(p_df, p_title, p_yaxis) {
 
 ```
 
+
+```{r Hour Performance}
+# 4 & 12 Hour Performance
+
+# Region
+t1 <- summary_df %>%
+  filter(Week >= lkp_12_week) %>%
+  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+  group_by(Week) %>%
+  summarise(
+    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) |> 
+  mutate(AgeBand = "-") |> 
+  mutate(Stp = "-") |> 
+  mutate(Flag = "Region") |> 
+  select(Week, AgeBand, Stp, everything())
+
+# ICB
+t2 <- summary_df %>%
+  filter(Week >= lkp_12_week) %>%
+  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+  group_by(Week, Stp) %>%
+  summarise(
+    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) |> 
+  mutate(AgeBand = "-") |> 
+  mutate(Flag = "Stp") |> 
+  select(Week, AgeBand, Stp, everything())
+
+# AGE
+t3 <- summary_df %>%
+  filter(Week >= lkp_12_week) %>%
+  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
+  group_by(Week, AgeBand, Stp) %>%
+  summarise(
+    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
+    .groups = "drop"
+  ) |> 
+  mutate(Flag = "AgeBand") 
+
+# Combine 
+dft <- rbind(t1,t2,t3) 
+
+# Output
+dft_hour_performance  <- dft |> 
+  pivot_longer(
+    cols = starts_with("pct_"),
+    names_to = "Wait_Category",
+    values_to = "Percentage"
+  ) %>%
+  mutate(
+    Wait_Category = factor(
+      Wait_Category,
+      levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
+      labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
+    )
+  )
+
+```
+
 ## Overview 
 
 ::: columns
@@ -849,6 +847,8 @@ bslib::layout_column_wrap(
 
 :::
 
+<small>*The boxes are colour-coded based on weekly directional performance, where green highlights a positive or improving outcome (a reduction in long waits) and orange indicates a negative or deteriorating trend (increases in total attendances, avoidable visits, and longer wait times).*</small>
+
 ## Scope & Regional Context
 
 :::{.callout-note appearance="simple"}
@@ -860,7 +860,7 @@ By tracking 4-hour performance, 12-hour wait times, and total dwell time—with 
 :::
 
 ::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
-### <i class="bi bi-activity"></i> ED Monitoring Infographic
+### <i class="bi bi-activity"></i> SW ED Winter Recovery Infographic
 
 ![Emergency Department Monitoring Infographic](C:/Users/euan.ives/Desktop/R Stuff/picture/uec_metrics_overview.jpg){width=80%}
 :::
@@ -891,65 +891,57 @@ plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Atte
 
 # Distinct
 df_colors <- df_spot |> 
-  filter(DataType == "Attendances") |>  # HERE !!
+  filter(Grp != "Other") |> 
+  filter(DataType == "Attendances") |> 
   distinct(Grp) |> 
   mutate(color = custom_colors[1:n()])
 
 # Add Colours
-df_pie_data <- df_spot |> 
-  filter(DataType == "Attendances") |>  # HERE !!
+df_bar_data <- df_spot |> 
+  filter(Grp != "Other") |> 
+  filter(DataType == "Attendances") |> 
   left_join(df_colors, by = "Grp")
 
-# Construct Plotly figure using category-mapped custom palette
-plot_ly() |> 
-  # Chart 1: 0-18
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "0-18"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "0-18",
-    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0, 0.31)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("0-18"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
+color_palette <- setNames(df_colors$color, df_colors$Grp)
+
+# Helper function to generate sorted individual horizontal bar charts
+create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
+  # Sort data descending by Total_Attendances so largest bar is at the top
+  data_sorted <- data_subset |> 
+    filter(AgeBand == age_band) |> 
+    arrange(desc(Total_Attendances)) |> 
+    mutate(Grp = factor(Grp, levels = rev(Grp))) # Reverse factor levels for horizontal Plotly ordering
+  
+  plot_ly(
+    data = data_sorted,
+    y = ~Grp,
+    x = ~Total_Attendances,
+    color = ~Grp,
+    colors = color_palette,
+    type = "bar",
+    orientation = "h",
+    text = ~Total_Attendances,
+    textposition = "auto",
+    hoverinfo = "x+y",
+    showlegend = show_leg
   ) |> 
-  # Chart 2: 19-64
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "19-64"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "19-64",
-    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.34, 0.65)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("19-64"), 
-      line = list(color = "#FFFFFF", width = 1.5)
+    layout(
+      annotations = list(
+        x = 0.5, y = 1.05, text = paste0("<b>", age_band, " Years</b>"), 
+        showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
+      ),
+      yaxis = list(title = ""),
+      xaxis = list(title = "Total Attendances")
     )
-  ) |> 
-  # Chart 3: 65+
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "65+"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "65+",
-    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.68, 0.99)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("65+"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
-  ) |> 
+}
+
+# Generate 3 ordered bar plots
+p1 <- create_sorted_bar_chart(df_bar_data, "0-18", show_leg = TRUE)
+p2 <- create_sorted_bar_chart(df_bar_data, "19-64", show_leg = FALSE)
+p3 <- create_sorted_bar_chart(df_bar_data, "65+", show_leg = FALSE)
+
+# Combine into side-by-side horizontal bar subplots
+subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |> 
   layout(
     title = list(
       text = paste0(
@@ -964,11 +956,10 @@ plot_ly() |>
       orientation = "h",
       x = 0.5,
       xanchor = "center",
-      y = -0.12
+      y = -0.2
     ),
-    margin = list(l = 10, r = 10, t = 70, b = 60)
+    margin = list(l = 80, r = 10, t = 80, b = 60)
   )
-
 
 ```
 
@@ -992,7 +983,7 @@ commentary_summary2 <- paste(commentary_0_18, commentary_19_64, commentary_65_pl
 
 `r commentary_summary2`
 
-*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently Hidden From View)*
 
 
 ### Rate Of Attendances
@@ -1114,69 +1105,61 @@ df_summary_age_rate |>
 
 # Distinct
 df_colors <- df_spot |> 
-  filter(DataType == "Avoid_Attendances") |>  # HERE !!
+  filter(Grp != "Other") |> 
+  filter(DataType == "Avoid_Attendances") |> 
   distinct(Grp) |> 
   mutate(color = custom_colors[1:n()])
 
 # Add Colours
-df_pie_data <- df_spot |> 
-  filter(DataType == "Avoid_Attendances") |>  # HERE !!
+df_bar_data <- df_spot |> 
+  filter(Grp != "Other") |> 
+  filter(DataType == "Avoid_Attendances") |> 
   left_join(df_colors, by = "Grp")
 
-# Construct Plotly figure using category-mapped custom palette
-plot_ly() |> 
-  # Chart 1: 0-18
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "0-18"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "0-18",
-    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0, 0.31)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("0-18"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
+color_palette <- setNames(df_colors$color, df_colors$Grp)
+
+# Helper function to generate sorted individual horizontal bar charts
+create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
+  # Sort data descending by Total_Attendances so largest bar is at the top
+  data_sorted <- data_subset |> 
+    filter(AgeBand == age_band) |> 
+    arrange(desc(Total_Attendances)) |> 
+    mutate(Grp = factor(Grp, levels = rev(Grp))) # Reverse factor levels for horizontal Plotly ordering
+  
+  plot_ly(
+    data = data_sorted,
+    y = ~Grp,
+    x = ~Total_Attendances,
+    color = ~Grp,
+    colors = color_palette,
+    type = "bar",
+    orientation = "h",
+    text = ~Total_Attendances,
+    textposition = "auto",
+    hoverinfo = "x+y",
+    showlegend = show_leg
   ) |> 
-  # Chart 2: 19-64
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "19-64"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "19-64",
-    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.34, 0.65)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("19-64"), 
-      line = list(color = "#FFFFFF", width = 1.5)
+    layout(
+      annotations = list(
+        x = 0.5, y = 1.05, text = paste0("<b>", age_band, " Years</b>"), 
+        showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
+      ),
+      yaxis = list(title = ""),
+      xaxis = list(title = "Total Attendances")
     )
-  ) |> 
-  # Chart 3: 65+
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "65+"),
-    labels = ~Grp,
-    values = ~Total_Attendances,
-    hole = 0.5,
-    name = "65+",
-    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.68, 0.99)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("65+"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
-  ) |> 
+}
+
+# Generate 3 ordered bar plots
+p1 <- create_sorted_bar_chart(df_bar_data, "0-18", show_leg = TRUE)
+p2 <- create_sorted_bar_chart(df_bar_data, "19-64", show_leg = FALSE)
+p3 <- create_sorted_bar_chart(df_bar_data, "65+", show_leg = FALSE)
+
+# Combine into side-by-side horizontal bar subplots
+subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |> 
   layout(
     title = list(
       text = paste0(
-        "<b>Avoidable Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        "<b>Total Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
       ),
       x = 0,
@@ -1187,12 +1170,10 @@ plot_ly() |>
       orientation = "h",
       x = 0.5,
       xanchor = "center",
-      y = -0.12
+      y = -0.2
     ),
-    margin = list(l = 10, r = 10, t = 70, b = 60)
+    margin = list(l = 80, r = 10, t = 80, b = 60)
   )
-
-
     
 ```
 
@@ -1216,7 +1197,7 @@ commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plu
 
 `r commentary_summary`
 
-*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently Hidden From View)*
 
 ### Attendance Map
 
@@ -1272,12 +1253,13 @@ map_title <- HTML(paste0("
 
 
 # 4. Build Leaflet map with title control
-leaflet(map_data) %>%
-  addTiles() %>%
-  # Title Control Box
-  addControl(html = map_title, position = "topleft") %>%
-  
-  
+leaflet(map_data, options = leafletOptions(
+  tileAutoOption = FALSE,
+  # Pass a custom user agent to satisfy tile provider headers
+  headers = list("User-Agent" = "R-Leaflet-Quarto-App")
+)) |>
+  addProviderTiles(providers$Esri.WorldTopoMap) |>
+  addControl(html = map_title, position = "topleft") |> 
   # Heatmap Base Layers
   addHeatmap(
     data = map_data, lng = ~lng, lat = ~lat, intensity = ~`Attendances`,
@@ -1981,42 +1963,26 @@ p |>
 
 ### Region
 
+::: {.panel-tabset .nav-pills}
+
+### < 4 Hours
+
 ```{r}
 #| echo: false
 #| warning: false
-#| fig-height: 8
-#| fig-width: 10
 
-weekly_summary <- summary_df %>%
-  filter(Week >= lkp_12_week) %>%
-  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
-  group_by(Week) %>%
-  summarise(
-    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    .groups = "drop"
-  )
-
-# Reshape data to long format
-plot_data <- weekly_summary %>%
-  pivot_longer(
-    cols = starts_with("pct_"),
-    names_to = "Wait_Category",
-    values_to = "Percentage"
-  ) %>%
-  mutate(Wait_Category = factor(
-    Wait_Category,
-    levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
-    labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
-  ))
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Region")
 
 # Filter latest week data points for text annotations
 latest_week_data <- plot_data %>%
+  filter(Wait_Category == "<4 Hours") |>  # HERE !!
   filter(Week == max(Week))
 
 # Interactive Plotly implementation
 plot_data %>%
+  filter(Wait_Category == "<4 Hours") |>  # HERE !!
   plot_ly(
     x = ~Week,
     y = ~Percentage,
@@ -2044,15 +2010,15 @@ plot_data %>%
   layout(
     title = list(
       text = paste0(
-      "<b>Weekly Emergency Department Wait-Time Performance Trends by Region</b>",
-      "<br>",
-      "<sup><span style='color:gray; font-size:12px;'>",
-      "Percentages of attendances by length of stay tier against the operational target (Last 12 Weeks)",
-      "</span></sup>"
+        "<b>Weekly Emergency Department Wait-Time Performance Trends by Region</b>",
+        "<br>",
+        "<sup><span style='color:gray; font-size:12px;'>",
+        "[ Less Than 4 Hours ] Percentages of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+        "</span></sup>"
+      ),
+      x = 0.05
     ),
-    x = 0.05
-  ),
-  margin = list(t = 100),
+    margin = list(t = 100),
     xaxis = list(
       title = "Week Ending",
       dtick = 1209600000, # 2 weeks in milliseconds
@@ -2085,42 +2051,175 @@ plot_data %>%
     )
   )
 
+```
+
+
+### 4 - 12 Hours
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Region")
+
+# Filter latest week data points for text annotations
+latest_week_data <- plot_data %>%
+  filter(Wait_Category == "4-12 Hours") |>  # HERE !!
+  filter(Week == max(Week))
+
+# Interactive Plotly implementation
+plot_data %>%
+  filter(Wait_Category == "4-12 Hours") |>  # HERE !!
+  plot_ly(
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "lines+markers",
+    hovertemplate = "<b>%{fullData.name}</b><br>Week Ending: %{x|%d %b %Y}<br>Percentage: %{y:.1f}%<extra></extra>"
+  ) %>%
+  # Add value labels on the latest week points
+  add_trace(
+    data = latest_week_data,
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "text",
+    text = ~sprintf("%.1f%%", Percentage),
+    textposition = "top left",
+    showlegend = FALSE,
+    hoverinfo = "skip",
+    inherit = FALSE
+  ) %>%
+  layout(
+    title = list(
+      text = paste0(
+        "<b>Weekly Emergency Department Wait-Time Performance Trends by Region</b>",
+        "<br>",
+        "<sup><span style='color:gray; font-size:12px;'>",
+        "[ Between 4 & 12 Hours ] Percentages of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+        "</span></sup>"
+      ),
+      x = 0.05
+    ),
+    margin = list(t = 100),
+    xaxis = list(
+      title = "Week Ending",
+      dtick = 1209600000, # 2 weeks in milliseconds
+      tickformat = "%d %b",
+      showgrid = FALSE
+    ),
+    yaxis = list(
+      title = "Percentage of Attendances",
+      range = c(0, 100),
+      ticksuffix = "%"
+    ),
+    legend = list(
+      title = list(text = "<b>Performance Buckets</b>"),
+      orientation = "h", x = 0.3, y = -0.2
+    )
+  )
 
 ```
 
+### > 12 Hours
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Region")
+
+# Filter latest week data points for text annotations
+latest_week_data <- plot_data %>%
+  filter(Wait_Category == ">12 Hours") |>  # HERE !!
+  filter(Week == max(Week))
+
+# Interactive Plotly implementation
+plot_data %>%
+  filter(Wait_Category == ">12 Hours") |>  # HERE !!
+  plot_ly(
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "lines+markers",
+    hovertemplate = "<b>%{fullData.name}</b><br>Week Ending: %{x|%d %b %Y}<br>Percentage: %{y:.1f}%<extra></extra>"
+  ) %>%
+  # Add value labels on the latest week points
+  add_trace(
+    data = latest_week_data,
+    x = ~Week,
+    y = ~Percentage,
+    color = ~Wait_Category,
+    colors = c("<4 Hours" = "#2166ac", "4-12 Hours" = "#f4a582", ">12 Hours" = "#b2182b"),
+    type = "scatter",
+    mode = "text",
+    text = ~sprintf("%.1f%%", Percentage),
+    textposition = "top left",
+    showlegend = FALSE,
+    hoverinfo = "skip",
+    inherit = FALSE
+  ) %>%
+  layout(
+    title = list(
+      text = paste0(
+        "<b>Weekly Emergency Department Wait-Time Performance Trends by Region</b>",
+        "<br>",
+        "<sup><span style='color:gray; font-size:12px;'>",
+        "[ Greater Than 12 Hours ] Percentages of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+        "</span></sup>"
+      ),
+      x = 0.05
+    ),
+    margin = list(t = 100),
+    xaxis = list(
+      title = "Week Ending",
+      dtick = 1209600000, # 2 weeks in milliseconds
+      tickformat = "%d %b",
+      showgrid = FALSE
+    ),
+    yaxis = list(
+      title = "Percentage of Attendances",
+      range = c(0, 100),
+      ticksuffix = "%"
+    ),
+    legend = list(
+      title = list(text = "<b>Performance Buckets</b>"),
+      orientation = "h", x = 0.3, y = -0.2
+    )
+  )
+
+```
+
+:::
+
+
 ### ICB
 
+::: {.panel-tabset .nav-pills}
+
+### < 4 Hours
 ```{r}
 #| echo: false
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
 
-weekly_summary <- summary_df %>%
-  filter(Week >= lkp_12_week) |> 
-  mutate(Stp = if_else(nchar(Stp) > 30, paste0(substr(Stp, 1, 27), "..."), Stp)) %>%
-  group_by(Week, Stp) %>%
-  summarise(
-    pct_4hrs = sum(`4Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    pct_4_12hrs = sum(`4-12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    pct_12hrs = sum(`12Hours`, na.rm = TRUE) / sum(Attendances, na.rm = TRUE) * 100,
-    .groups = "drop"
-  )
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Stp") |> 
+  filter(Wait_Category == "<4 Hours")
 
-# Reshape data to long format
-plot_data <- weekly_summary %>%
-  pivot_longer(
-    cols = starts_with("pct_"),
-    names_to = "Wait_Category",
-    values_to = "Percentage"
-  ) %>%
-  mutate(Wait_Category = factor(
-    Wait_Category,
-    levels = c("pct_4hrs", "pct_4_12hrs", "pct_12hrs"),
-    labels = c("<4 Hours", "4-12 Hours", ">12 Hours")
-  ))
-
-# Multi-line trend chart faceted by Stp
+# Stp
 ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
@@ -2143,7 +2242,7 @@ ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = 
   )) +
   labs(
     title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
-    subtitle = "Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    subtitle = "[ Less Than 4 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
     x = "Week Ending",
     y = "Percentage of Attendances",
     colour = "Wait Duration"
@@ -2157,7 +2256,47 @@ ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = 
 
 ```
 
-### Age 0-18
+
+### 4 - 12 Hours
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Stp") |> 
+  filter(Wait_Category == "4-12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Between 4 & 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### > 12 Hours
 
 ```{r}
 #| echo: false
@@ -2165,33 +2304,451 @@ ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = 
 #| fig-height: 8
 #| fig-width: 10
 
-plot_wait_times_by_age(summary_df, "0-18")
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "Stp") |> 
+  filter(Wait_Category == ">12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Greater Than 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
 
 ```
+
+:::
+
+### Age 0-18
+
+::: {.panel-tabset .nav-pills}
+
+### < 4 Hours
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "0-18") |> 
+  filter(Wait_Category == "<4 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = min(plot_data$Week),
+    y = 94,
+    label = "76% Target",
+    colour = "#1b7837",
+    hjust = 0,
+    fontface = "bold"
+  ) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Less Than 4 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### 4 - 12 Hours
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "0-18") |> 
+  filter(Wait_Category == "4-12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Between 4 & 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### > 12 Hours
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "0-18") |> 
+  filter(Wait_Category == ">12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Greater Than 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+:::
 
 ### Age 19-64
 
+::: {.panel-tabset .nav-pills}
+
+### < 4 Hours
 ```{r}
 #| echo: false
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
- 
-plot_wait_times_by_age(summary_df, "19-64")
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "19-64") |> 
+  filter(Wait_Category == "<4 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = min(plot_data$Week),
+    y = 94,
+    label = "76% Target",
+    colour = "#1b7837",
+    hjust = 0,
+    fontface = "bold"
+  ) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Less Than 4 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
 
 ```
+
+### 4 - 12 Hours
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "19-64") |> 
+  filter(Wait_Category == "4-12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Between 4 & 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### > 12 Hours
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "19-64") |> 
+  filter(Wait_Category == ">12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Greater Than 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+:::
 
 ### Age 65+
 
+::: {.panel-tabset .nav-pills}
+
+### < 4 Hours
 ```{r}
 #| echo: false
 #| warning: false
 #| fig-height: 8
 #| fig-width: 10
 
-plot_wait_times_by_age(summary_df, "65+")
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "65+") |> 
+  filter(Wait_Category == "<4 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  annotate(
+    "text",
+    x = min(plot_data$Week),
+    y = 94,
+    label = "76% Target",
+    colour = "#1b7837",
+    hjust = 0,
+    fontface = "bold"
+  ) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Less Than 4 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
 
 ```
+
+### 4 - 12 Hours
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "65+") |> 
+  filter(Wait_Category == "4-12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Between 4 & 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+### > 12 Hours
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-height: 8
+#| fig-width: 10
+
+
+# Plot Data
+plot_data <- dft_hour_performance |>  
+  filter(Flag == "AgeBand") |> 
+  filter(AgeBand == "65+") |> 
+  filter(Wait_Category == ">12 Hours")
+
+# Stp
+ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Stp) +
+  scale_y_continuous(labels = percent_format(scale = 1), limits = c(0, 100)) +
+  scale_colour_manual(values = c(
+    "<4 Hours" = "#2166ac",
+    "4-12 Hours" = "#f4a582",
+    ">12 Hours" = "#b2182b"
+  )) +
+  labs(
+    title = "Weekly Emergency Department Wait-Time Performance Trends by ICB",
+    subtitle = "[ Greater Than 12 Hours ] Percentage of attendances by length of stay tier against the operational target (Last 12 Weeks)",
+    x = "Week Ending",
+    y = "Percentage of Attendances",
+    colour = "Wait Duration"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10)
+  )
+
+```
+
+:::
 
 
 :::
@@ -2223,7 +2780,8 @@ df_spot_time <- df_clean |>
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(Week, AgeBand, Grp) |> 
-  summarise(Avg_Time = round(mean(DerEcDuration, na.rm = TRUE), 0), .groups = "drop")
+  summarise(Avg_Time = round(mean(DerEcDuration, na.rm = TRUE), 0), .groups = "drop") |> 
+  filter(Grp != "Other")
 
 # Distinct
 df_colors <- df_spot_time |> 
@@ -2231,63 +2789,53 @@ df_colors <- df_spot_time |>
   mutate(color = custom_colors[1:n()])
 
 # Add Colours
-df_pie_data <- df_spot_time |> 
+df_bar_data <- df_spot_time |> 
   left_join(df_colors, by = "Grp")
 
-# Construct Plotly figure using category-mapped custom palette
-plot_ly() |> 
-  # Chart 1: 0-18
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "0-18"),
-    labels = ~Grp,
-    values = ~Avg_Time,
-    hole = 0.5,
-    name = "0-18",
-    title = list(text = "<b>0-18 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0, 0.31)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("0-18"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
+color_palette <- setNames(df_colors$color, df_colors$Grp)
+
+# Helper function to generate sorted individual horizontal bar charts
+create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
+  # Sort data descending by Avg_Time so largest bar is at the top
+  data_sorted <- data_subset |> 
+    filter(AgeBand == age_band) |> 
+    arrange(desc(Avg_Time)) |> 
+    mutate(Grp = factor(Grp, levels = rev(Grp))) # Reverse factor levels for horizontal Plotly ordering
+  
+  plot_ly(
+    data = data_sorted,
+    y = ~Grp,
+    x = ~Avg_Time,
+    color = ~Grp,
+    colors = color_palette,
+    type = "bar",
+    orientation = "h",
+    text = ~Avg_Time,
+    textposition = "auto",
+    hoverinfo = "x+y",
+    showlegend = show_leg
   ) |> 
-  # Chart 2: 19-64
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "19-64"),
-    labels = ~Grp,
-    values = ~Avg_Time,
-    hole = 0.5,
-    name = "19-64",
-    title = list(text = "<b>19-64 Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.34, 0.65)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("19-64"), 
-      line = list(color = "#FFFFFF", width = 1.5)
+    layout(
+      annotations = list(
+        x = 0.5, y = 1.05, text = paste0("<b>", age_band, " Years</b>"), 
+        showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
+      ),
+      yaxis = list(title = ""),
+      xaxis = list(title = "Average Time (Mins)")
     )
-  ) |> 
-  # Chart 3: 65+
-  add_pie(
-    data = df_pie_data |> filter(AgeBand == "65+"),
-    labels = ~Grp,
-    values = ~Avg_Time,
-    hole = 0.5,
-    name = "65+",
-    title = list(text = "<b>65+ Years</b>", font = list(size = 14)),
-    domain = list(x = c(0.68, 0.99)),
-    textinfo = "percent",
-    hoverinfo = "label+value+percent",
-    marker = list(
-      colors = get_chart_colors("65+"), 
-      line = list(color = "#FFFFFF", width = 1.5)
-    )
-  ) |> 
+}
+
+# Generate 3 ordered bar plots
+p1 <- create_sorted_bar_chart(df_bar_data, "0-18", show_leg = TRUE)
+p2 <- create_sorted_bar_chart(df_bar_data, "19-64", show_leg = FALSE)
+p3 <- create_sorted_bar_chart(df_bar_data, "65+", show_leg = FALSE)
+
+# Combine into side-by-side horizontal bar subplots
+subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |> 
   layout(
     title = list(
       text = paste0(
-        "<b>Average Time Spent In ED Department & By Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        "<b>Average Time Spent In ED Department & By Age Band (Week Ending ", format(max(df_spot_time$Week), "%d %b %Y"), 
         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
       ),
       x = 0,
@@ -2298,10 +2846,11 @@ plot_ly() |>
       orientation = "h",
       x = 0.5,
       xanchor = "center",
-      y = -0.12
+      y = -0.2
     ),
-    margin = list(l = 10, r = 10, t = 70, b = 60)
+    margin = list(l = 80, r = 10, t = 80, b = 60)
   )
+
 
 ```
 
@@ -2334,7 +2883,7 @@ commentary_summary3 <- paste(commentary_0_18, commentary_19_64, commentary_65_pl
 
 `r commentary_summary3`
 
-*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance.*
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently Hidden From View)*
 
 :::
 
