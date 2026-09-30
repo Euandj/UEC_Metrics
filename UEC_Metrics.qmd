@@ -89,24 +89,26 @@ icb_palette <- c(
 
 # Lookup dataframe of South West Acute Hospital sites and coordinates
 site_coords <- tibble::tribble(
-  ~OrganisationName,                           ~lat,     ~lng,      ~Postcode,
-  "BRISTOL ROYAL HOSPITAL FOR CHILDREN",       51.4583,  -2.5976,   "BS2 8BJ",
-  "BRISTOL ROYAL INFIRMARY",                  51.4589,  -2.5956,   "BS2 8HW",
-  "CHELTENHAM GENERAL HOSPITAL",              51.8921,  -2.0735,   "GL53 7AN",
-  "DERRIFORD HOSPITAL",                       50.4172,  -4.1161,   "PL6 8DH",
-  "DORSET COUNTY HOSPITAL",                   50.7093,  -2.4439,   "DT1 2JY",
-  "GLOUCESTERSHIRE ROYAL HOSPITAL",           51.8683,  -2.2335,   "GL1 3NN",
-  "MUSGROVE PARK HOSPITAL",                   51.0121,  -3.1189,   "TA1 5DA",
-  "NORTH DEVON DISTRICT HOSPITAL",            51.0911,  -4.0543,   "EX31 4JB",
-  "ROYAL CORNWALL HOSPITAL (TRELISKE)",       50.2690,  -5.0954,   "TR1 3LJ",
-  "ROYAL DEVON & EXETER HOSPITAL (WONFORD)",  50.7161,  -3.5028,   "EX2 5DW",
-  "ROYAL UNITED HOSPITAL",                    51.3888,  -2.3897,   "BA1 3NG",
-  "SALISBURY DISTRICT HOSPITAL",              51.0478,  -1.7925,   "SP2 8BJ",
-  "SOUTHMEAD HOSPITAL",                       51.4975,  -2.5908,   "BS10 5NB",
-  "THE GREAT WESTERN HOSPITAL",               51.5348,  -1.7482,   "SN3 6BB",
-  "TORBAY HOSPITAL",                           50.4811,  -3.5511,   "TQ2 7AA",
-  "WESTON GENERAL HOSPITAL",                  51.3201,  -2.9620,   "BS23 4TQ",
-  "YEOVIL DISTRICT HOSPITAL",                 50.9458,  -2.6341,   "BA21 4AT"
+  ~OrganisationName,                           ~lat,     ~lng,
+  "Bristol Royal Hospital For Children",       51.4583,  -2.5976,
+  "Bristol Royal Infirmary",                   51.4589,  -2.5956,
+  "Cheltenham General Hospital",               51.8921,  -2.0735,
+  "Derriford Hospital",                        50.4172,  -4.1161,
+  "Dorset County Hospital",                    50.7093,  -2.4439,
+  "Gloucestershire Royal Hospital",            51.8683,  -2.2335,
+  "Musgrove Park Hospital",                    51.0121,  -3.1189,
+  "North Devon District Hospital",             51.0911,  -4.0543,
+  "Poole Hospital",                            50.7253,  -1.9664,
+  "Royal Bournemouth Hospital",                50.7428,  -1.8152,
+  "Royal Cornwall Hospital (Treliske)",        50.2690,  -5.0954,
+  "Royal Devon & Exeter Hospital (wonford)",   50.7161,  -3.5028,
+  "Royal United Hospital",                     51.3888,  -2.3897,
+  "Salisbury District Hospital",               51.0478,  -1.7925,
+  "Southmead Hospital",                        51.4975,  -2.5908,
+  "The Great Western Hospital",                51.5348,  -1.7482,
+  "Torbay Hospital",                           50.4811,  -3.5511,
+  "Weston General Hospital",                   51.3201,  -2.9620,
+  "Yeovil District Hospital",                  50.9458,  -2.6341
 )
 
 # Week ending function (Sunday)
@@ -173,9 +175,9 @@ create_dynamic_value_box <- function(metric_name, current_val, target_val, prev_
   # Map specific showcase icon based on metric_name
   showcase_icon_name <- switch(
     metric_name,
-    "Total Attendances"     = "people",
+    "Total Type 1 Attendances"     = "people",
     "Avoidable Attendances" = "person-badge",
-    "A&E 4-Hour Target"     = "clock-history",
+    "A&E 4-Hour"     = "clock-history",
     "4-12 Hour Waits"       = "hourglass-split",
     "12+ Hour Waits"        = "exclamation-triangle",
     "activity" # Default fallback icon
@@ -847,7 +849,7 @@ bslib::layout_column_wrap(
 
 :::
 
-<small>*The boxes are colour-coded based on weekly directional performance, where green highlights a positive or improving outcome (a reduction in long waits) and orange indicates a negative or deteriorating trend (increases in total attendances, avoidable visits, and longer wait times).*</small>
+<small>*The boxes are colour-coded based on weekly directional performance, where green highlights a positive or improving outcome (a reduction in long waits) and orange indicates a negative or deteriorating trend (increases in total attendances, avoidable visits, and longer wait times) [ Source : ECDS ].*</small>
 
 ## Scope & Regional Context
 
@@ -892,14 +894,14 @@ plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Atte
 # Distinct
 df_colors <- df_spot |> 
   filter(Grp != "Other") |> 
-  filter(DataType == "Attendances") |> 
+  filter(DataType == "Attendances_Avg") |> 
   distinct(Grp) |> 
   mutate(color = custom_colors[1:n()])
 
 # Add Colours
 df_bar_data <- df_spot |> 
   filter(Grp != "Other") |> 
-  filter(DataType == "Attendances") |> 
+  filter(DataType == "Attendances_Avg") |> 
   left_join(df_colors, by = "Grp")
 
 color_palette <- setNames(df_colors$color, df_colors$Grp)
@@ -931,7 +933,7 @@ create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
         showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
       ),
       yaxis = list(title = ""),
-      xaxis = list(title = "Total Attendances")
+      xaxis = list(title = "6 Week Average Attendances")
     )
 }
 
@@ -945,19 +947,13 @@ subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |>
   layout(
     title = list(
       text = paste0(
-        "<b>Total Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
+        "<b>Average Weekly Attendances (Last 6 Weeks to ", format(max(df_clean$Week, na.rm = TRUE), "%d %b %Y"),
         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
       ),
       x = 0,
       font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
     ),
-    showlegend = TRUE,
-    legend = list(
-      orientation = "h",
-      x = 0.5,
-      xanchor = "center",
-      y = -0.2
-    ),
+    showlegend = FALSE,
     margin = list(l = 80, r = 10, t = 80, b = 60)
   )
 
@@ -969,7 +965,7 @@ subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |>
 
 # Data 
 dfc2 <- df_spot |> 
-   filter(DataType == "Attendances") # HERE !!
+   filter(DataType == "Attendances_Avg") # HERE !!
 
 # Strings for Each Demography
 commentary_0_18  <- generate_age_commentary(dfc2, "0-18")
@@ -1094,110 +1090,6 @@ df_summary_age_rate |>
 
 
 ```
-
-- Spot Week :
-
-```{r}
-#| echo: false
-#| warning: false
-
-# Avoidable Attendances By Chief Complaint
-
-# Distinct
-df_colors <- df_spot |> 
-  filter(Grp != "Other") |> 
-  filter(DataType == "Avoid_Attendances") |> 
-  distinct(Grp) |> 
-  mutate(color = custom_colors[1:n()])
-
-# Add Colours
-df_bar_data <- df_spot |> 
-  filter(Grp != "Other") |> 
-  filter(DataType == "Avoid_Attendances") |> 
-  left_join(df_colors, by = "Grp")
-
-color_palette <- setNames(df_colors$color, df_colors$Grp)
-
-# Helper function to generate sorted individual horizontal bar charts
-create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
-  # Sort data descending by Total_Attendances so largest bar is at the top
-  data_sorted <- data_subset |> 
-    filter(AgeBand == age_band) |> 
-    arrange(desc(Total_Attendances)) |> 
-    mutate(Grp = factor(Grp, levels = rev(Grp))) # Reverse factor levels for horizontal Plotly ordering
-  
-  plot_ly(
-    data = data_sorted,
-    y = ~Grp,
-    x = ~Total_Attendances,
-    color = ~Grp,
-    colors = color_palette,
-    type = "bar",
-    orientation = "h",
-    text = ~Total_Attendances,
-    textposition = "auto",
-    hoverinfo = "x+y",
-    showlegend = show_leg
-  ) |> 
-    layout(
-      annotations = list(
-        x = 0.5, y = 1.05, text = paste0("<b>", age_band, " Years</b>"), 
-        showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
-      ),
-      yaxis = list(title = ""),
-      xaxis = list(title = "Total Attendances")
-    )
-}
-
-# Generate 3 ordered bar plots
-p1 <- create_sorted_bar_chart(df_bar_data, "0-18", show_leg = TRUE)
-p2 <- create_sorted_bar_chart(df_bar_data, "19-64", show_leg = FALSE)
-p3 <- create_sorted_bar_chart(df_bar_data, "65+", show_leg = FALSE)
-
-# Combine into side-by-side horizontal bar subplots
-subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |> 
-  layout(
-    title = list(
-      text = paste0(
-        "<b>Total Attendances by Chief Complaint & Age Band (Week Ending ", format(max(df_spot$Week), "%d %b %Y"), 
-        ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
-      ),
-      x = 0,
-      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
-    ),
-    showlegend = TRUE,
-    legend = list(
-      orientation = "h",
-      x = 0.5,
-      xanchor = "center",
-      y = -0.2
-    ),
-    margin = list(l = 80, r = 10, t = 80, b = 60)
-  )
-    
-```
-
-
-```{r Commentary 1}
-#| warning: false
-
-# Data 
-dfc1 <- df_spot |> 
-   filter(DataType == "Avoid_Attendances") # HERE !!
-
-# Strings for Each Demography
-commentary_0_18  <- generate_age_commentary(dfc1, "0-18")
-commentary_19_64 <- generate_age_commentary(dfc1, "19-64")
-commentary_65_plus <- generate_age_commentary(dfc1, "65+")
-
-# Combine
-commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plus, sep = "<br><br>")
-
-```
-
-`r commentary_summary`
-
-*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently Hidden From View)*
 
 ### Attendance Map
 
@@ -1428,6 +1320,106 @@ summary_df |>
 plot_attendance_summary(summary_df_avoidable, "Total Volume Of Avoidable Attendances & By Age", "Avoidable Attendances")
 
 ```
+
+
+- Spot Week :
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Avoidable Attendances By Chief Complaint
+
+# Distinct
+df_colors <- df_spot |> 
+  filter(Grp != "Other") |> 
+  filter(DataType == "Avoid_Attendances_Avg") |> 
+  distinct(Grp) |> 
+  mutate(color = custom_colors[1:n()])
+
+# Add Colours
+df_bar_data <- df_spot |> 
+  filter(Grp != "Other") |> 
+  filter(DataType == "Avoid_Attendances_Avg") |> 
+  left_join(df_colors, by = "Grp")
+
+color_palette <- setNames(df_colors$color, df_colors$Grp)
+
+# Helper function to generate sorted individual horizontal bar charts
+create_sorted_bar_chart <- function(data_subset, age_band, show_leg = FALSE) {
+  # Sort data descending by Total_Attendances so largest bar is at the top
+  data_sorted <- data_subset |> 
+    filter(AgeBand == age_band) |> 
+    arrange(desc(Total_Attendances)) |> 
+    mutate(Grp = factor(Grp, levels = rev(Grp))) # Reverse factor levels for horizontal Plotly ordering
+  
+  plot_ly(
+    data = data_sorted,
+    y = ~Grp,
+    x = ~Total_Attendances,
+    color = ~Grp,
+    colors = color_palette,
+    type = "bar",
+    orientation = "h",
+    text = ~Total_Attendances,
+    textposition = "auto",
+    hoverinfo = "x+y",
+    showlegend = show_leg
+  ) |> 
+    layout(
+      annotations = list(
+        x = 0.5, y = 1.05, text = paste0("<b>", age_band, " Years</b>"), 
+        showarrow = FALSE, xref = "paper", yref = "paper", font = list(size = 14)
+      ),
+      yaxis = list(title = ""),
+      xaxis = list(title = "6 Week Average Avoidable Attendances")
+    )
+}
+
+# Generate 3 ordered bar plots
+p1 <- create_sorted_bar_chart(df_bar_data, "0-18", show_leg = TRUE)
+p2 <- create_sorted_bar_chart(df_bar_data, "19-64", show_leg = FALSE)
+p3 <- create_sorted_bar_chart(df_bar_data, "65+", show_leg = FALSE)
+
+# Combine into side-by-side horizontal bar subplots
+subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |> 
+  layout(
+    title = list(
+      text = paste0(
+         "<b>Average Weekly Avoidable Attendances by Chief Complaint (Last 6 Weeks to ", format(max(df_clean$Week, na.rm = TRUE), "%d %b %Y"),
+         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    showlegend = FALSE,
+    margin = list(l = 80, r = 10, t = 80, b = 60)
+  )
+    
+```
+
+
+```{r Commentary 1}
+#| warning: false
+
+# Data 
+dfc1 <- df_spot |> 
+   filter(DataType == "Avoid_Attendances_Avg") # HERE !!
+
+# Strings for Each Demography
+commentary_0_18  <- generate_age_commentary(dfc1, "0-18")
+commentary_19_64 <- generate_age_commentary(dfc1, "19-64")
+commentary_65_plus <- generate_age_commentary(dfc1, "65+")
+
+# Combine
+commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plus, sep = "<br><br>")
+
+```
+
+`r commentary_summary`
+
+*The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently Hidden From View)*
+
 
 ### Percentage Of Avoidable
 
@@ -1954,6 +1946,8 @@ p |>
 
 ```
 
+<small>*The estimated cost per Type 1 ED visit is based on a baseline average of £271.64. Further details are available under 'Data Context & Definitions' sourced from The King's Fund.*</small>
+  
 :::
 
 
@@ -2034,14 +2028,14 @@ plot_data %>%
       list(
         type = "line",
         x0 = 0, x1 = 1, xref = "paper",
-        y0 = 76, y1 = 76, yref = "y",
+        y0 = 84, y1 = 84, yref = "y",
         line = list(color = "#1b7837", width = 1.5, dash = "dash")
       )
     ),
     annotations = list(
       list(
         x = min(plot_data$Week, na.rm = TRUE), y = 78, xref = "x", yref = "y",
-        text = "<b>76% Target</b>", showarrow = FALSE, xanchor = "left",
+        text = "<b>84% Target</b>", showarrow = FALSE, xanchor = "left",
         font = list(color = "#1b7837", size = 11)
       )
     ),
@@ -2223,12 +2217,12 @@ plot_data <- dft_hour_performance |>
 ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
-  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  geom_hline(yintercept = 84, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
   annotate(
     "text",
     x = min(plot_data$Week),
     y = 94,
-    label = "76% Target",
+    label = "84% Target",
     colour = "#1b7837",
     hjust = 0,
     fontface = "bold"
@@ -2359,12 +2353,12 @@ plot_data <- dft_hour_performance |>
 ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
-  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  geom_hline(yintercept = 84, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
   annotate(
     "text",
     x = min(plot_data$Week),
     y = 94,
-    label = "76% Target",
+    label = "84% Target",
     colour = "#1b7837",
     hjust = 0,
     fontface = "bold"
@@ -2496,12 +2490,12 @@ plot_data <- dft_hour_performance |>
 ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
-  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  geom_hline(yintercept = 84, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
   annotate(
     "text",
     x = min(plot_data$Week),
     y = 94,
-    label = "76% Target",
+    label = "84% Target",
     colour = "#1b7837",
     hjust = 0,
     fontface = "bold"
@@ -2633,12 +2627,12 @@ plot_data <- dft_hour_performance |>
 ggplot(plot_data, aes(x = Week, y = Percentage, colour = Wait_Category, group = Wait_Category)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
-  geom_hline(yintercept = 76, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
+  geom_hline(yintercept = 84, linetype = "dashed", colour = "#1b7837", linewidth = 0.8) +
   annotate(
     "text",
     x = min(plot_data$Week),
     y = 94,
-    label = "76% Target",
+    label = "84% Target",
     colour = "#1b7837",
     hjust = 0,
     fontface = "bold"
@@ -2892,118 +2886,12 @@ commentary_summary3 <- paste(commentary_0_18, commentary_19_64, commentary_65_pl
 ::: {.callout-note collapse="true" style="background-color: #f0fff4; border-left-color: green;"}
 ## Policy Change - Urgent and Emergency Care Recovery: Reducing Patient Harm Through Improved Flow
 
-**To:** Chairs and Chief Executives and Chairs of Integrated Care Boards, Acute, Community and Mental Health Providers  
-**From:** Regional Directors  
-**Date:** August 2026  
-**Subject:** Urgent and Emergency Care Recovery: Reducing Patient Harm Through Improved Flow  
-
-***
-
-Dear Colleagues,
-
 As we continue our preparations for winter and the delivery of our urgent and emergency care recovery plans, we are writing to highlight what remains one of the most significant risks to patient safety across our region: poor flow through the urgent and emergency care pathway.
 
-At every stage of the patient journey, delays create risk. Patients waiting for an ambulance response, patients cared for in ambulances outside emergency departments, patients receiving treatment in overcrowded clinical environments, and patients remaining in hospital longer than clinically necessary are all exposed to avoidable harm. Delays are associated with poorer patient experience, deterioration in clinical outcomes, increased risk of deconditioning and loss of independence, and place considerable pressure on staff striving to deliver safe and compassionate care.
-
-Whilst much attention is often placed on operational metrics, it is important that we remain focused on what these measures represent for patients. Category 2 ambulance response times, emergency department waiting times and delayed discharges are not simply performance indicators; they are proxies for the timeliness, safety and quality of care we provide.
-
-We must therefore collectively renew our focus on restoring the standards that patients have a right to expect. This includes achieving Category 2 ambulance response times of less than 25 minutes, whilst continuing to strive towards the constitutional ambition of 18 minutes. It includes recovering four-hour emergency department performance to a minimum of 82%, whilst maintaining our ambition to return to the constitutional standard of 95%. Equally, we must continue to reduce the number of patients experiencing exceptionally long waits, with 12-hour waits from arrival in emergency departments never exceeding 2% of attendances. These standards matter because excessive delays result in poorer patient outcomes and expose people to unnecessary risk.
-
-The most effective way to deliver sustained improvement in these measures is through better flow across the whole urgent and emergency care pathway. We are therefore setting out three actions to be implemented during August and demonstrably impacting from 1 September 2026.
+The most effective way to deliver sustained improvement in these measures is through better flow across the whole urgent and emergency care pathway. We are therefore setting out three actions to be implemented during August and demonstrably impacting from **1 September 2026**.
 
 ---
 
-### 1. Maximising Alternatives to Emergency Departments
-
-Many patients can receive more timely and appropriate care through services outside of the emergency department. Every opportunity should therefore be taken to direct patients to the right service first time.
-
-The current urgent care pathway does not consistently provide access to senior clinical decision-makers at the point of clinical assessment and navigation. As a result, opportunities to navigate patients towards community-based alternatives, including Virtual Wards and Urgent Community Response (UCR) services, may be missed. This contributes to avoidable hospital conveyance and admission, places additional pressure on acute services, and reduces the ability of systems to fully realise the benefits of existing community capacity.
-
-To address this, providers should ensure:
-
-* **Senior Clinical Decision-Maker Access:** Available to SWAST, NHS 111, Primary Care and Community Services for a minimum of 12 hours per day, seven days per week.
-* **Alternative Pathway Availability:** Alternative urgent care pathways, including UCR and Virtual Wards, are operational and accessible for a minimum of 12 hours per day, seven days per week.
-* **Active Patient Assessment:** Patients are actively assessed for, and where clinically appropriate, directed towards alternatives to Emergency Department attendance and hospital admission.
-* **Clinical Navigation Arrangements:** Clear clinical navigation arrangements are in place to support timely decision-making across organisational boundaries. Emerging best practice suggests this function may be most effectively delivered through a UEC or Community Single Point of Access (SPOA).
-
-This capacity should ensure that alternatives to Emergency Departments are available to support the relatively small cohort of patients that are responsible for the bulk of urgent care demand.
-
-#### Expected Outcome
-By strengthening clinical decision-making and improving access to alternative urgent care pathways, systems can reduce unnecessary Emergency Department attendances, avoid preventable admissions, increase utilisation of community services, and improve patient experience through care delivered closer to home.
-
----
-
-### 2. Timely Ambulance Handovers
-
-Ambulance handover delays compromise patient care and reduce the availability of ambulance resources for patients awaiting urgent responses in the community.
-
-From **1 September 2026**, providers must ensure:
-
-1. Ambulance handovers do not exceed 45 minutes.
-2. Delivery achieves, as a minimum, the trajectories set within agreed organisational plans.
-3. Organisations continue to work towards the 15-minute constitutional standard.
-
-Patients deserve prompt access to definitive assessment and treatment on arrival at hospital, and ambulance crews should be available to respond to the next patient in need rather than caring for patients in queues outside emergency departments.
-
-To provide early notice of future expectations, from **1 January 2027** we will expect that no ambulance handover exceeds 30 minutes across any site within the region.
-
----
-
-### 3. Improving Discharge Flow Seven Days a Week
-
-Delayed discharge affects not only the individual patient remaining in hospital but also those waiting for admission, assessment and treatment elsewhere in the system.
-
-Across acute, community and mental health settings, providers must achieve:
-
-* **Before Midday:** A minimum of 30% of all daily discharges, seven days per week.
-* **By 17:00:** A minimum of 80% of all daily discharges, seven days per week.
-
-Earlier discharge supports patient independence, reduces exposure to hospital-associated harms and creates the capacity required to ensure timely care for others entering the system.
-
----
-
-### Building on Existing Foundations
-
-In addition to these new expectations, we expect providers and systems to ensure that they are delivering the actions agreed in 2024 arising from the South West Ambulance performance improvement Task and Finish groups. A reminder of the outputs agreed from that series of work is attached as **Appendix A**.
-
----
-
-### A Shared Commitment to Safe and Timely Care
-
-These actions align closely with your existing recovery and improvement plans and reflect the recent correspondence regarding winter preparedness issued in the NHS England Winter planning letter. They should not be viewed as additional initiatives but as fundamental disciplines required to support safe and effective care throughout the year.
-
-We ask Boards to maintain a relentless focus on flow as a quality and safety priority. Crowded emergency departments, delayed handovers and prolonged hospital stays are not inevitable consequences of demand; they are symptoms of pathways that require improvement across organisational boundaries. The actions set out in this letter are intended to address those issues in ways that will have the greatest impact on patient outcomes, staff experience and system resilience.
-
-The coming months provide an opportunity to build stronger foundations ahead of winter. By improving flow, reducing delays and ensuring every patient receives care in the most appropriate setting, we can together reduce harm, improve outcomes and restore public confidence in urgent and emergency care services.
-
----
-
-### Next Steps
-
-We are asking each Board to commit to these standards, and confirm the date that these standards will be in place. Where a board feels that it cannot meet these standards, we will require an explanation of why and details of what other actions organisations are taking to avoid harm arising from delays in the urgent care pathway.
-
-Attached as **Appendix B** and **Appendix C**, are Provider and ICB Board Assurance statements. Please ensure your board review and complete these statements by **21 August 2027** with returns sent to `[Insert generic e-mail address]`.
-
-The Region will monitor delivery of these flow priorities through a formal assurance process from September 2026. Trusts and systems will be expected to provide clear evidence of implementation and demonstrate sustained improvement against the required standards. Where delivery is off track, trajectories are not being met, or organisations cannot demonstrate that the required changes are in place, we will initiate prompt escalation through regional performance management arrangements. Boards and Chief Executives will be expected to personally account for progress and provide credible recovery actions.
-
-Thank you for your continued leadership and commitment to delivering safe, high-quality care for the populations we serve.
-
-Yours sincerely,
-
-**Sue Doheny**  
-Regional Director  
-
-**Dr Trevor Smith**  
-Regional Medical Director  
-
-**Jill Crook**  
-Regional Chief Nurse  
-
-**Martin Wilkinson**  
-Regional Chief Operating Officer  
-
-**Ben Roe**  
-Regional Clinical Quality and Improvement Director
 :::
 
 

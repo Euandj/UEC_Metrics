@@ -36,8 +36,8 @@ last_sunday <- function(date) {
 
 # Lkp
 today <- Sys.Date()+3
-last_sunday <- today -(as.POSIXlt(today)$wday)
-lkp_box_weeks <- c(last_sunday, last_sunday - 7)
+last_sunday_lkp <- today -(as.POSIXlt(today)$wday)
+lkp_box_weeks <- c(last_sunday_lkp, last_sunday_lkp - 7)
 current_wday <- wday(today) # Sunday = 1, Wednesday = 4
 shift <- ifelse(current_wday >= 4, 0, -7)
 target_wednesday <- today + days(4 - current_wday + shift)
@@ -91,8 +91,13 @@ SELECT
         WHEN P.Site_Name = 'BFT SOUTHMEAD SOUTHMEAD HOSPITAL' THEN 'SOUTHMEAD HOSPITAL'
         ELSE P.Site_Name
     END AS [Organisation_Name],
-    ICB.STP_Code,
-    S.STP AS STP,
+    LKP1.STP_Code,
+    
+    
+    --S.STP AS STP,
+    LKP1.STP_Name AS STP,
+    
+    
     EC.Der_EC_Duration,
     EC.Der_EC_Investigation_All,
     EC.Der_EC_Treatment_All,
@@ -118,14 +123,19 @@ FROM MESH_ECDS.EC_Core AS EC
 LEFT JOIN Reporting_UKHD_ODS.Provider_Site AS P
     ON EC.Site_Code_Of_Treatment = P.Site_Code
     
-LEFT JOIN (SELECT DISTINCT Organisation_Code, STP_Code, Organisation_Name, STP_Name
+LEFT JOIN (SELECT DISTINCT Region_Name, Organisation_Code, STP_Code, Organisation_Name, STP_Name
                   FROM Reporting_UKHD_ODS.Provider_Hierarchies
                   WHERE Region_Name = 'South West'
-                  AND ODS_Organisation_Type like '%NHS%') AS ICB
-    ON EC.Provider_Code = ICB.Organisation_Code
+                  AND ODS_Organisation_Type like '%NHS%') AS LKP1
+    ON EC.Provider_Code = LKP1.Organisation_Code
     
-LEFT JOIN Internal_Reference.Provider_DeliveryBoard AS S
-    ON EC.Provider_Code = S.Code
+LEFT JOIN (SELECT DISTINCT Site_Code, Trust_Name 
+                  FROM [Reporting_UKHD_ODS].[Provider_Site]) AS LKP2
+   ON EC.Der_Provider_Site_Code = LKP2.Site_Code
+    
+--LEFT JOIN Internal_Reference.Provider_DeliveryBoard AS S
+--    ON EC.Provider_Code = S.Code
+    
 LEFT JOIN (SELECT DISTINCT Snomed_Code, ECDS_Group1 FROM UKHD_ECDS_TOS.Code_Sets 
                   WHERE Sheet_Name = '13.4 CHIEF COMPLAINT' 
                   AND ECDS_Group1 <> 'Code deprecated') AS TOS
@@ -133,20 +143,12 @@ LEFT JOIN (SELECT DISTINCT Snomed_Code, ECDS_Group1 FROM UKHD_ECDS_TOS.Code_Sets
     
 WHERE EC.Arrival_Date >= DATEADD(MONTH, -12, GETDATE())
 AND EC.EC_Department_Type = '01'
+AND LKP1.Region_Name = 'South West'
 AND (EC.EC_Discharge_Status_SNOMED_CT NOT IN ('1077031000000103', '1077781000000101', '63238001')
         OR EC.EC_Discharge_Status_SNOMED_CT IS NULL)
 AND (EC.EC_AttendanceCategory IN ('1', '2', '3') OR EC.EC_AttendanceCategory IS NULL)
-AND S.STP IN (
-      'Bath And North East Somerset, Swindon And Wiltshire STP',
-      'Bristol, North Somerset And South Gloucestershire STP',
-      'Cornwall And The Isles Of Scilly Health & Social Care Partnership (STP)',
-      'Devon STP',
-      'Dorset STP',
-      'Gloucestershire STP',
-      'Somerset STP'
-  )
-  AND EC.Der_EC_Duration < 86400
-  AND EC.Der_Dupe_Flag = 0
+AND EC.Der_EC_Duration < 86400
+AND EC.Der_Dupe_Flag = 0
 
 ") |>
   clean_names("upper_camel")
@@ -222,21 +224,25 @@ if(max(df_sql$ArrivalDate) >= last_sunday(Sys.Date())){
   cat(crayon::red(err_msg, "\n"))
   stop(err_msg, call. = FALSE) # Stop Main IF Statement
 }
-  
-
 
 # Clean names for Avoidable ED Attendance Package 
 df_clean <- df_sql |> 
+  filter(ArrivalDate >= min(ArrivalDate[wday(ArrivalDate, week_start = 1) == 1])) |> # From First Monday
   mutate(Week = closest_future_sunday(ArrivalDate)) |> 
   filter(Week <= lkp_max_week) |> # Full Weeks only 
+  mutate(Stp = Stp |> 
+           str_remove_all(" INTEGRATED CARE BOARD") |> 
+           str_to_title() |> 
+           str_replace("^Nhs\\b", "NHS") |> 
+           str_squish(),
+         OrganisationName = str_to_title(OrganisationName)) |> 
   rename(
-  Department_Type = EcDepartmentType,
-  Discharge_Status = EcDischargeStatusSnomedCt,
-  AttendanceCategory = EcAttendanceCategory,
-  Arrival_Mode = EcArrivalModeSnomedCt,
-  Investigation = DerEcInvestigationAll,
-  Treatment = DerEcTreatmentAll
-)
+    Department_Type = EcDepartmentType,
+    Discharge_Status = EcDischargeStatusSnomedCt,
+    AttendanceCategory = EcAttendanceCategory,
+    Arrival_Mode = EcArrivalModeSnomedCt,
+    Investigation = DerEcInvestigationAll,
+    Treatment = DerEcTreatmentAll)
 
 # Update 
 lkp_box_weeks <- c(max(df_clean$Week), max(df_clean$Week) - 7)
@@ -332,12 +338,10 @@ df_spot_1 <- df_clean |>
   filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
-  group_by(Week, AgeBand, Grp) |> 
+  group_by(AgeBand, Grp) |> 
   summarise(Total_Attendances = n(), .groups = "drop_last") |> 
-  mutate(
-    Percentage = Total_Attendances / sum(Total_Attendances),
-    Rank = min_rank(desc(Total_Attendances))
-  ) |> 
+  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
+         Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
   mutate(DataType = "Attendances")
 
@@ -348,16 +352,42 @@ df_spot_2 <- df_avoidable_event |>
   filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
-  group_by(Week, AgeBand, Grp) |> 
+  group_by(AgeBand, Grp) |> 
   summarise(Total_Attendances = n(), .groups = "drop_last") |> 
-  mutate(
-    Percentage = Total_Attendances / sum(Total_Attendances),
-    Rank = min_rank(desc(Total_Attendances))
-  ) |> 
+  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
+         Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
   mutate(DataType = "Avoid_Attendances")
 
-df_spot <- rbind(df_spot_1, df_spot_2)
+# Calculate latest 6 weeks date boundary
+max_week_clean <- max(df_clean$Week, na.rm = TRUE)
+
+df_spot_3 <- df_clean |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(EcdsGroup1),  !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  group_by(AgeBand, Grp) |> 
+  summarise(Total_Attendances = n() / 6, .groups = "drop_last") |> 
+  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
+         Rank = min_rank(desc(Total_Attendances))) |> 
+  ungroup() |> 
+  mutate(DataType = "Attendances_Avg")
+
+df_spot_4 <- df_avoidable_event |> 
+  filter(isAvoidable == TRUE) |> 
+  mutate(Week = closest_future_sunday(ArrivalDate)) |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(EcdsGroup1),  !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  group_by(AgeBand, Grp) |> 
+  summarise(Total_Attendances = n() / 6, .groups = "drop_last") |> 
+  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
+         Rank = min_rank(desc(Total_Attendances))) |> 
+  ungroup() |> 
+  mutate(DataType = "Avoid_Attendances_Avg")
+
+df_spot <- rbind(df_spot_1, df_spot_2, df_spot_3, df_spot_4) |> 
+  mutate(Week = max_week_clean)
 
 # Save 
 if(nrow(df_spot) >10){
