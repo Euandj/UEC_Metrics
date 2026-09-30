@@ -339,7 +339,7 @@ df_spot_1 <- df_clean |>
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = n(), .groups = "drop_last") |> 
+  summarise(Total_Attendances = round(n(), 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
          Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
@@ -353,7 +353,7 @@ df_spot_2 <- df_avoidable_event |>
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = n(), .groups = "drop_last") |> 
+  summarise(Total_Attendances = round(n(), 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
          Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
@@ -367,7 +367,7 @@ df_spot_3 <- df_clean |>
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = n() / 6, .groups = "drop_last") |> 
+  summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
          Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
@@ -380,7 +380,7 @@ df_spot_4 <- df_avoidable_event |>
   group_by(AgeBand) |> 
   mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = n() / 6, .groups = "drop_last") |> 
+  summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
          Rank = min_rank(desc(Total_Attendances))) |> 
   ungroup() |> 
