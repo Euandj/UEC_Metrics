@@ -11,6 +11,7 @@ library(janitor)
 library(tidyr)
 library(forcats)
 library(stringr)
+library(readr)
 
 # rm(list=ls())
 # source("C:/Users/euan.ives/Desktop/R Stuff/scripts/load_libraries.R", local = TRUE)
@@ -47,11 +48,11 @@ target_wednesday <- today + days(4 - current_wday + shift)
 my_run_log_lkp <- readRDS(paste0(my_dir,"data/logs/uec_event_df_sql.rds"))
 
 # Check Logs For any missing Data Runs 
-filtered_df <- my_run_log_lkp |> 
+lkp_dt_lt <- my_run_log_lkp |> 
   filter(Date <= Sys.Date())
 
 # Checker
-lkp_log_check <- nrow(filtered_df) == sum(filtered_df$Value, na.rm = TRUE)
+lkp_log_check <- nrow(lkp_dt_lt) == sum(lkp_dt_lt$Value, na.rm = TRUE)
 
 # Check if log file up to date
 if(lkp_log_check) {
@@ -71,6 +72,8 @@ if(run_read_rds){
   df_clean <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
   summary_df_avoidable <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge.rds"))
   df_avoidable_event <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge_Events.rds"))
+  df_virtual_ward <- readRDS(paste0(my_dir,"data/rds/UEC_df_sql_virtual.rds"))
+  df_ucr <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_UCR_Events.rds"))
   
 } else {
   cat(crayon::green("✔ SQL Running !"))
@@ -92,12 +95,8 @@ SELECT
         ELSE P.Site_Name
     END AS [Organisation_Name],
     LKP1.STP_Code,
-    
-    
-    --S.STP AS STP,
     LKP1.STP_Name AS STP,
-    
-    
+    LKP1.Organisation_Name AS Trust,
     EC.Der_EC_Duration,
     EC.Der_EC_Investigation_All,
     EC.Der_EC_Treatment_All,
@@ -106,6 +105,27 @@ SELECT
     CASE WHEN EC.Discharge_Destination_SNOMED_CT IN ('306689006','306691003','306694006','306705005','50861005') THEN 1 
          ELSE 0 
     END AS DISCHARGED,
+    CASE EC.Discharge_Destination_SNOMED_CT 
+                WHEN '306689006' THEN 'Discharged'
+                WHEN '306691003' THEN 'Discharged'
+                WHEN '306694006' THEN 'Discharged'
+                WHEN '306705005' THEN 'Discharged'
+                WHEN '50861005'  THEN 'Discharged'
+                WHEN '1066331000000109' THEN 'Ambulatory / short stay'
+                WHEN '1066341000000100' THEN 'Ambulatory / short stay'
+                WHEN '1066351000000102' THEN 'Ambulatory / short stay'
+                WHEN '306706006'       THEN 'Admitted'
+                WHEN '1874161000000104' THEN 'Admitted'
+                WHEN '1066361000000104' THEN 'Admitted'
+                WHEN '1066371000000106' THEN 'Admitted'
+                WHEN '1066381000000108' THEN 'Admitted'
+                WHEN '1066391000000105' THEN 'Admitted'
+                WHEN '1066401000000108' THEN 'Admitted'
+                WHEN '19712007'  THEN 'Transfer'
+                WHEN '183919006' THEN 'Transfer'
+                WHEN '305398007' THEN 'Died'
+        ELSE 'Other / Unknown'
+    END AS ECDS_Group1,
     EC.EC_Chief_Complaint_SNOMED_CT,
     TOS.ECDS_Group1,
     EC.EC_Attendance_Source_SNOMED_CT,
@@ -133,9 +153,6 @@ LEFT JOIN (SELECT DISTINCT Site_Code, Trust_Name
                   FROM [Reporting_UKHD_ODS].[Provider_Site]) AS LKP2
    ON EC.Der_Provider_Site_Code = LKP2.Site_Code
     
---LEFT JOIN Internal_Reference.Provider_DeliveryBoard AS S
---    ON EC.Provider_Code = S.Code
-    
 LEFT JOIN (SELECT DISTINCT Snomed_Code, ECDS_Group1 FROM UKHD_ECDS_TOS.Code_Sets 
                   WHERE Sheet_Name = '13.4 CHIEF COMPLAINT' 
                   AND ECDS_Group1 <> 'Code deprecated') AS TOS
@@ -149,10 +166,48 @@ AND (EC.EC_Discharge_Status_SNOMED_CT NOT IN ('1077031000000103', '1077781000000
 AND (EC.EC_AttendanceCategory IN ('1', '2', '3') OR EC.EC_AttendanceCategory IS NULL)
 AND EC.Der_EC_Duration < 86400
 AND EC.Der_Dupe_Flag = 0
-
 ") |>
   clean_names("upper_camel")
 
+
+
+# -------------------------------------------------------------------------------------------------------
+# UCR
+
+df_ucr_sql <- dbGetQuery(conn = con_udal, statement ="
+                       SELECT b.STP_Name, a.*
+                       FROM UKHF_Urgent_Community_Response.Two_Hour_UCR_Data1_1 a
+                       LEFT JOIN Reporting_UKHD_ODS.Commissioner_Hierarchies b ON a.Org_Code = b.Organisation_Code
+                       WHERE a.Effective_Snapshot_Date >= DATEADD(MONTH, -14, GETDATE())
+                       AND a.Org_Code IN ('Y58','15N','11X','15C','11J','11M','11N','92G')
+                       ") |> 
+  clean_names("upper_camel")
+
+# Clean
+df_ucr <- df_ucr_sql |> 
+  mutate(
+    StpName = StpName %>%
+      str_remove_all("(?i)\\s*integrated care board\\s*") %>%
+      str_to_title() %>%
+      str_replace_all("\\bNhs\\b", "NHS")
+  ) |> 
+  mutate(Dt = as.Date(EffectiveSnapshotDate)) |> 
+  mutate(ICB = if_else(nchar(StpName) > 32, stringr::str_trunc(StpName, width = 32, side = "right", ellipsis = "..."), StpName)) |> 
+  mutate(MeasureValue = as.numeric(MeasureValue)) |> 
+  mutate(Breakdown = if_else(Breakdown == "65_Plus", "65+", Breakdown)) |> 
+  mutate(flag = ifelse(OrgCode == "Y58" & CountOf == "referrals" & Measure == "referral count", "SW",
+                       ifelse(OrgCode != "Y58" & CountOf == "referrals" & Measure == "referral count", "ICB",
+                              ifelse(OrgCode != "Y58" & CountOf == "referrals" & Breakdown %in% c("0-18", "19-64", "65+"), "AGE", "Other"))))
+
+# Save 
+if(nrow(df_ucr) >1000){
+  saveRDS(df_ucr, paste0(my_dir,"data/rds/Actual_UEC_UCR_Events.rds"))
+  # Message
+  cat(crayon::green("✔ Actual_UEC_UCR-  Success!"))
+} else {
+  # Message
+  cat(crayon::red("Error: Actual_UEC_UCR -  Failed."), "\n")
+}
 
 # -------------------------------------------------------------------------------------------------------
 # 
@@ -236,6 +291,13 @@ df_clean <- df_sql |>
            str_replace("^Nhs\\b", "NHS") |> 
            str_squish(),
          OrganisationName = str_to_title(OrganisationName)) |> 
+  mutate(Trust = Trust |> 
+           str_remove_all(" NHS FOUNDATION TRUST") |> 
+           str_remove_all(" NHS TRUST") |> 
+           str_to_title() |> 
+           str_replace("^Nhs\\b", "NHS") |> 
+           str_squish() |> 
+           str_c(" NHS FT")) |> 
   rename(
     Department_Type = EcDepartmentType,
     Discharge_Status = EcDischargeStatusSnomedCt,
@@ -403,17 +465,7 @@ if(nrow(df_spot) >10){
 
 # Summary Values - ACTUALS (Validation)
 summary_df <- df_clean %>%
-  group_by(
-    Week,
-    Month,
-    Year,
-    DerActivityMonth,
-    ProviderCode,
-    OrganisationName,
-    Stp,
-    Department_Type,
-    AgeBand
-  ) %>%
+  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, OrganisationName = Trust, Stp, Department_Type, AgeBand) %>%
   summarise(
     `4Hours`     = sum(DerEcDuration >= 0 & DerEcDuration <= 239, na.rm = TRUE),
     `4-12Hours`  = sum(DerEcDuration >= 240 & DerEcDuration <= 719, na.rm = TRUE),
@@ -437,18 +489,7 @@ summary_df_avoidable <- df_avoidable_event %>%
   filter(isAvoidable == TRUE) |> 
   mutate(Week = closest_future_sunday(ArrivalDate)) |> 
   mutate(STP = if_else(nchar(Stp) > 32, str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
-  group_by(
-    Week,
-    Month,
-    Year,
-    DerActivityMonth,
-    ProviderCode,
-    OrganisationName,
-    Stp,
-    Department_Type,
-    AgeBand,
-    isAvoidable
-  ) %>%
+  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, OrganisationName = Trust, Stp, Department_Type, AgeBand, isAvoidable) %>%
   summarise(
     `4Hours`     = sum(DerEcDuration >= 0 & DerEcDuration <= 239, na.rm = TRUE),
     `4-12Hours`  = sum(DerEcDuration >= 240 & DerEcDuration <= 719, na.rm = TRUE),
@@ -505,7 +546,7 @@ current_row <- d_sorted %>% slice(1)
 prev_row    <- d_sorted %>% slice(2)
 
 # Map Structure
-metric_name <- c("Total Attendances", "Avoidable Attendances", "A&E 4-Hour Target", "4-12 Hour Waits", "12+ Hour Waits")
+metric_name <- c("Type 1 Attendances", "Avoidable Attendances", "A&E 4-Hour Waits", "4-12 Hour Waits", "12+ Hour Waits")
 current_val <- c(current_row$Total_Attendances, current_row$Avoidable_Attendances, current_row$pct_4hrs, current_row$pct_4_12hrs, current_row$pct_12hrs)
 target_val <- c(current_row$Total_Attendances, current_row$Avoidable_Attendances, 76.0, current_row$pct_4_12hrs, current_row$pct_12hrs)
 prev_val <- c(prev_row$Total_Attendances, prev_row$Avoidable_Attendances, prev_row$pct_4hrs, prev_row$pct_4_12hrs, prev_row$pct_12hrs)
@@ -536,6 +577,165 @@ if(nrow(metrics_data) >3){
 }
 
 # -------------------------------------------------------------------------------------------------------
+df_virtual_ward  <- dbGetQuery(conn = con_udal, statement =" 
+WITH cte_raw AS (SELECT v.[virtual_ward_id] ,v.[NHS_Region_Id_ODS] ,v.[ICS_Code] ,
+                  SUM(cast(v.[Occupancy] as numeric) ) as total_number_of_patients_on_ward,
+                  SUM(cast(v.[Capacity]as numeric) ) as current_capacity,
+                  CAST(v.[Submission_Period] as date) as ReportingDate,
+                  CAST(d.Week_End as date) as Week_End,
+                  CASE WHEN v.[virtual_ward_id] in ('be2a0db0-91ef-4cfb-86d4-b0fa4fc1a35c','4a7f33b500faf47cf8b16190c5571722') 
+                          THEN 'Bath And North East Somerset, Swindon And Wiltshire STP' 
+                          ELSE  s.STP_Name END AS STP_Name,
+                  CASE WHEN v.[virtual_ward_id] in ('be2a0db0-91ef-4cfb-86d4-b0fa4fc1a35c','4a7f33b500faf47cf8b16190c5571722') 
+                          THEN 'QOX' else S.STP_Code END AS STP_Code
+                          
+FROM [FOUNDRY_VirtualWardsTimeseries].[VirtualWards_Timeseries] AS v
+
+LEFT JOIN [Internal_Reference].[STP_Codes] AS s ON v.[ICS_Code] = s.STP_Code_ODS
+LEFT JOIN [Internal_Reference].[Date_Full] as d ON CAST(v.[Submission_Period] as date) = d.Full_Date
+        WHERE  (v.[NHS_Region_Id_ODS] = 'E40000006' or v.[virtual_ward_id] ='4a7f33b500faf47cf8b16190c5571722')
+        
+        GROUP BY 
+        v.[virtual_ward_id] ,v.[NHS_Region_Id_ODS] ,v.[ICS_Code] ,CAST(v.[Submission_Period] as date) ,d.Week_End	,s.STP_Name	,S.STP_Code
+        ),
+CTE_agg AS (
+            SELECT [virtual_ward_id] ,STP_Name ,WEEK_END , STP_CODE,
+                    SUM(total_number_of_patients_on_ward) AS 'total_number_of_patients_on_ward',
+                    SUM(current_capacity) AS 'current_capacity'
+FROM CTE_raw
+        GROUP BY [virtual_ward_id],STP_Name,WEEK_END, STP_CODE),
+
+CTE_cap AS (
+            SELECT STP_Name,WEEK_END, STP_CODE,
+                  SUM(total_number_of_patients_on_ward) AS total_number_of_patients_on_ward,
+                  SUM(current_capacity) AS 'current_capacity' 
+ FROM CTE_Agg
+
+ GROUP BY STP_Name,WEEK_END, STP_CODE),
+ 
+ CTE_POP1 AS (
+              SELECT  DISTINCT a.*,c.Region_Code
+ 
+ FROM [UKHF_Demography].[No_Of_Patients_Regd_At_GP_Prac_Regions_Single_Age1] as a
+ LEFT JOIN [Reporting_UKHD_ODS].[Commissioner_Hierarchies] as c on a.[Org_Code] = c.[STP_Code] WHERE a.effective_snapshot_date = '2025-04-01'
+                                                                                               AND a.org_type = 'ICB'
+                                                                                               AND a.age <> 'All'
+                                                                                               AND c.[Region_Code] = 'Y58'),
+CTE_POP AS (
+            SELECT ORG_CODE, 
+            SUM([Number_of_Patients]) AS [Population]
+FROM CTE_POP1
+
+ GROUP BY ORG_CODE ),
+ 
+ cte_prep as (
+              SELECT c.* ,m.Year_Month 
+              FROM cte_cap AS c
+              
+              LEFT JOIN (SELECT DISTINCT CAST(week_end as date) AS 'Week_end'
+                          FROM [Internal_Reference].[Date_Full]) AS d ON c.Week_End = d.Week_end
+
+LEFT JOIN [Internal_Reference].[Date_Full] AS m ON d.week_end= m.Full_Date),
+
+cte_final AS (
+              SELECT STP_Name, WEEK_END, STP_CODE, Year_Month, total_number_of_patients_on_ward, current_capacity,
+                  Row_number() over (partition by Year_Month,stp_name order by week_end desc) as 'LastWkinMonth'
+FROM cte_prep
+  ),
+
+cte_dir AS (
+            SELECT v.[virtual_ward_id] ,v.[submitting_region_id] ,v.[submitting_stp_code],
+                    SUM(TRY_CAST(v.[referral_route_outpatient_department] as numeric) +
+                        TRY_CAST(v.[referral_route_emergency_department] as numeric) +
+                        TRY_CAST(v.[referral_route_general_medical_practitioner_practice] as numeric)+
+                        TRY_CAST(v.[referral_route_mental_health_service] as numeric)+
+                        TRY_CAST(v.[referral_route_community_Health_service] as numeric)+
+                        TRY_CAST(v.[referral_route_NHS_111] as numeric)+
+                        TRY_CAST(v.[referral_route_NHS_999] as numeric)+
+                        TRY_CAST(v.[referral_route_SDEC] as numeric)+
+                        TRY_CAST(v.[referral_route_urgent_community_response] as numeric)+
+                        TRY_CAST(v.[referral_route_other_or_not_known] as numeric))
+                        AS 'Step_Up',
+                        SUM(TRY_CAST(v.[referral_route_acute_hospital_inpatient_department] as numeric) ) as 'Step_Down',
+                        TRY_CAST(v.[submitted_at] AS date) AS ReportingDate,
+                        TRY_CAST(d.Week_End as date) as Week_End,
+                        CASE WHEN v.[virtual_ward_id] in ('be2a0db0-91ef-4cfb-86d4-b0fa4fc1a35c','4a7f33b500faf47cf8b16190c5571722') 
+                                THEN 'Bath And North East Somerset, Swindon And Wiltshire STP' ELSE  s.STP_Name END AS STP_Name,
+                        CASE WHEN v.[virtual_ward_id] in ('be2a0db0-91ef-4cfb-86d4-b0fa4fc1a35c','4a7f33b500faf47cf8b16190c5571722') 
+                                THEN 'QOX' ELSE S.STP_Code END AS STP_Code
+                        
+FROM [Foundry_VirtualWards].[VirtualWards_Sitrep_Edited] AS v
+
+LEFT JOIN [Internal_Reference].[STP_Codes] AS s ON v.submitting_stp_code = s.STP_Code_ODS
+LEFT JOIN [Internal_Reference].[Date_Full] AS d ON TRY_CAST([submitted_at] as date) = d.Full_Date
+          WHERE ([submitting_region_id] = 'E40000006' or v.[virtual_ward_id] = '4a7f33b500faf47cf8b16190c5571722')
+          
+          GROUP BY
+              v.[virtual_ward_id] ,v.[submitting_region_id] ,v.[submitting_stp_code] ,TRY_CAST(v.[submitted_at] as date) ,d.Week_End ,s.STP_Name ,S.STP_Code),
+              
+cte_next AS (
+              SELECT c.* ,m.Year_Month 
+              FROM cte_dir AS c
+              LEFT JOIN (SELECT DISTINCT CAST(week_end as date) AS 'Week_end'
+                                FROM [Internal_Reference].[Date_Full]) AS d ON c.Week_End = d.Week_end
+              LEFT JOIN [Internal_Reference].[Date_Full] as m on d.week_end= m.Full_Date),
+              
+cte_stepup AS (
+               SELECT STP_Name,WEEK_END, STP_CODE,Year_Month,Step_Up,
+               Row_number() over (partition by Year_Month,stp_name,[virtual_ward_id] 
+                          ORDER BY week_end desc) AS 'LastWkinMonth'
+FROM cte_next),
+
+cte_stepdown AS (
+                 SELECT STP_Name,WEEK_END, STP_CODE,Year_Month,Step_Down,
+                 Row_number() over (partition by Year_Month,stp_name,[virtual_ward_id] order by week_end desc) as 'LastWkinMonth'
+FROM cte_next)
+
+SELECT 'Virtual Wards'  as 'Table', Year(WEEK_END) as 'Year', month(week_end) as 'Month', 'NA' as 'Org_Code', 'NA' as 'Organisation_Name', 'NA' as 'Site Code',
+        'VW_Cap' as 'Metric_ID', 'Number of VW beds available' as 'Metric_Name', STP_Name,
+        CASE WHEN (STP_Name = 'Devon STP' and WEEK_END = '2024-08-25') THEN 216 else current_capacity END AS 'Val'
+FROM cte_final where LastWkinMonth = '1' and Week_End>='2023-09-01'
+
+  UNION
+
+SELECT 'Virtual Wards'  as 'Table', Year(WEEK_END) as 'Year', month(week_end) as 'Month', 'NA' as 'Org_Code', 'NA' as 'Organisation_Name', 'NA' as 'Site Code',
+        'VW_Occ' as 'Metric_ID','Number of VW beds occupied' as 'Metric_Name', STP_Name,
+        CASE WHEN (STP_Name = 'Devon STP' and WEEK_END = '2024-08-25') then 175 else  total_number_of_patients_on_ward end  AS 'Val'
+FROM cte_final where LastWkinMonth = '1' and Week_End>='2023-09-01'
+
+   UNION
+
+SELECT 'Virtual Wards'  as 'Table', '2024' as 'Year', '04' as 'Month', 'NA' as 'Org_Code', 'NA' as 'Organisation_Name', 'NA' as 'Site Code', 'VW_Reg_Pop' as 'Metric_ID',
+        'Registered GP Population' as 'Metric_Name', S.STP_Name, [Population] AS 'Val'
+FROM cte_pop  AS P
+LEFT JOIN [Internal_Reference].[STP_Codes] as s ON P.[Org_Code] = s.STP_Code_ODS
+
+  UNION
+
+SELECT 'Virtual Wards'  as 'Table' , Year(WEEK_END) as 'Year', month(week_end) as 'Month', 'NA' as 'Org_Code', 'NA' as 'Organisation_Name', 'NA' as 'Site Code', 'VW_StpUp' as 'Metric_ID',
+        'Number of Step Up Refs' as 'Metric_Name', STP_Name, Step_Up  AS 'Val'
+FROM cte_stepup where LastWkinMonth = '1' and Week_End>='2023-09-01'
+
+  UNION
+
+SELECT 'Virtual Wards'  as 'Table', Year(WEEK_END) as 'Year', month(week_end) as 'Month', 'NA' as 'Org_Code', 'NA' as 'Organisation_Name', 'NA' as 'Site Code', 'VW_StpDwn' as 'Metric_ID',
+        'Number of Step Down Refs' as 'Metric_Name', STP_Name, Step_Down AS 'Val'
+FROM cte_stepdown where LastWkinMonth = '1' and Week_End>='2023-09-01'
+ ") |>
+  clean_names("upper_camel")
+
+
+# Save 
+if(nrow(df_virtual_ward) >100){
+  saveRDS(df_virtual_ward, paste0(my_dir,"data/rds/UEC_df_sql_virtual.rds"))
+  # Message
+  cat(crayon::green("✔ UEC_df_sql_virtual -  Success!"))
+} else {
+  # Message
+  cat(crayon::red("Error: UEC_df_sql_virtual -  Failed."), "\n")
+}
+
+# -------------------------------------------------------------------------------------------------------
 
 # Update Run  Log
 my_run_log <- my_run_log_lkp |> 
@@ -552,10 +752,10 @@ saveRDS(my_run_log, paste0(my_dir,"data/logs/uec_event_df_sql.rds"))
 # QA Section
 df_clean |> 
   filter(ArrivalDate >= sort(unique(df_clean$ArrivalDate), decreasing = TRUE)[7]) |> 
-  group_by(ArrivalDate, OrganisationName) |> 
+  group_by(ArrivalDate, Trust) |> 
   summarise(vol = n(), .groups = "drop") |> 
   arrange(desc(ArrivalDate)) |> 
-  ggplot(aes(x = OrganisationName, y = vol, fill = fct_rev(factor(ArrivalDate)))) +
+  ggplot(aes(x = Trust, y = vol, fill = fct_rev(factor(ArrivalDate)))) +
   geom_col(color = "white", linewidth = 0.3) +
   scale_fill_viridis_d(option = "mako", direction = -1, guide = guide_legend(reverse = FALSE)) +
   coord_flip() +
