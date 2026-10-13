@@ -107,7 +107,7 @@ site_coords <- tibble::tribble(
   "Bristol NHS FT",                                 51.4583,  -2.5976,
   "Gloucestershire Hospitals NHS FT",               51.8921,  -2.0735,
   "University Hospitals Plymouth NHS FT",           50.4172,  -4.1161,
-  "University Hospitals Dorset NHS FT",             50.7093,  -2.4439,
+  "University Hospitals Dorset NHS FT",             50.7474,  -1.8218,
   "Somerset NHS FT",                                51.0121,  -3.1189,
   "Royal Devon University Healthcare NHS FT",       51.0911,  -4.0543,
   "Royal Cornwall Hospitals NHS FT",                50.2690,  -5.0954,
@@ -3652,7 +3652,7 @@ VW sitrep
 > South West Intelligence and Insights NHS England\
 > NHS England South West\
 >
-> *Version 1.6*
+> *Version 1.7*
 
 ::: footer
 <img src="C:/Users/euan.ives/Desktop/R Stuff/www/footer.png" alt="Footer Image"/>
