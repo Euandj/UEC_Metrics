@@ -103,7 +103,7 @@ icb_vw_palette <- c(
 
 # Lookup dataframe of South West Acute Hospital sites and coordinates
 site_coords <- tibble::tribble(
-  ~OrganisationName,                                ~lat,     ~lng,
+  ~Trust,                                ~lat,     ~lng,
   "Bristol NHS FT",                                 51.4583,  -2.5976,
   "Gloucestershire Hospitals NHS FT",               51.8921,  -2.0735,
   "University Hospitals Plymouth NHS FT",           50.4172,  -4.1161,
@@ -306,9 +306,9 @@ plot_attendance_summary <- function(p_df, p_title, p_yaxis) {
     group_by(Week, ICB) |> 
     summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
   
-  # 4. Prepare provider-level data (Week + OrganisationName)
+  # 4. Prepare provider-level data (Week + Trust)
   df_org <- p_df |> 
-    group_by(Week, OrganisationName) |> 
+    group_by(Week, Trust) |> 
     summarise(Vol = sum(Attendances, na.rm = TRUE), .groups = "drop")
   
   # Determine unique categories
@@ -318,7 +318,7 @@ plot_attendance_summary <- function(p_df, p_title, p_yaxis) {
   unique_stps <- unique(df_stp$ICB)
   n_stps <- length(unique_stps)
   
-  unique_orgs <- unique(df_org$OrganisationName)
+  unique_orgs <- unique(df_org$Trust)
   n_orgs <- length(unique_orgs)
   
   # Configure visibility vectors for dynamic dropdown
@@ -427,7 +427,7 @@ plot_attendance_summary <- function(p_df, p_title, p_yaxis) {
   
   # Traces By Organisation
   for (org in unique_orgs) {
-    df_sub <- df_org |> filter(OrganisationName == org)
+    df_sub <- df_org |> filter(Trust == org)
     
     p <- p |> 
       add_trace(
@@ -557,10 +557,10 @@ plot_ambulance_conversion_rate <- function(p_title, p_yaxis) {
       Conversion_Rate_Pct = round(100 * Type1_Discharge / Type1_ambulance, 2), .groups = "drop"
     )
   
-  # Week + OrganisationName
+  # Week + Trust
   df_org <- df_clean |> 
     filter(Arrival_Mode %in% c("1048031000000100", "1048041000000109", "1048021000000102", "1048051000000107")) |>  # ambulance
-    group_by(Week, OrganisationName) |> 
+    group_by(Week, Trust) |> 
     summarise(
       Type1_ambulance = n(),
       Type1_Discharge  = sum(EcdsGroup1 == "Discharged", na.rm = TRUE),
@@ -574,7 +574,7 @@ plot_ambulance_conversion_rate <- function(p_title, p_yaxis) {
   unique_stps <- unique(df_stp$ICB)
   n_stps <- length(unique_stps)
   
-  unique_orgs <- unique(df_org$OrganisationName)
+  unique_orgs <- unique(df_org$Trust)
   n_orgs <- length(unique_orgs)
   
   # Configure visibility vectors for dynamic dropdown
@@ -683,7 +683,7 @@ plot_ambulance_conversion_rate <- function(p_title, p_yaxis) {
   
   # Traces By Organisation
   for (org in unique_orgs) {
-    df_sub <- df_org |> filter(OrganisationName == org)
+    df_sub <- df_org |> filter(Trust == org)
     
     p <- p |> 
       add_trace(
@@ -798,9 +798,9 @@ plot_time_summary <- function(p_df, p_title, p_yaxis) {
     group_by(Week, ICB) |> 
     summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
   
-  # 4. Prepare provider-level data (Week + OrganisationName)
+  # 4. Prepare provider-level data (Week + Trust)
   df_org <- p_df |> 
-    group_by(Week, OrganisationName) |> 
+    group_by(Week, Trust) |> 
     summarise(Avg_Time = mean(DerEcDuration, na.rm = TRUE), .groups = "drop")
   
   # Determine unique categories
@@ -810,7 +810,7 @@ plot_time_summary <- function(p_df, p_title, p_yaxis) {
   unique_stps <- unique(df_stp$ICB)
   n_stps <- length(unique_stps)
   
-  unique_orgs <- unique(df_org$OrganisationName)
+  unique_orgs <- unique(df_org$Trust)
   n_orgs <- length(unique_orgs)
   
   # Configure visibility vectors for dynamic dropdown
@@ -919,7 +919,7 @@ plot_time_summary <- function(p_df, p_title, p_yaxis) {
   
   # Traces By Organisation
   for (org in unique_orgs) {
-    df_sub <- df_org |> filter(OrganisationName == org)
+    df_sub <- df_org |> filter(Trust == org)
     
     p <- p |> 
       add_trace(
@@ -1047,9 +1047,9 @@ plot_conversion_rate <- function(p_title, p_yaxis) {
       Conversion_Rate_Pct = round(100 * Type1_Admissions / Type1_Attendances, 2), .groups = "drop"
     )
   
-  # Week + OrganisationName
+  # Week + Trust
   df_org <- df_clean |> 
-    group_by(Week, OrganisationName) |> 
+    group_by(Week, Trust) |> 
     summarise(
       Type1_Attendances = n(),
       Type1_Admissions  = sum(EcdsGroup1 == "Admitted", na.rm = TRUE),
@@ -1063,7 +1063,7 @@ plot_conversion_rate <- function(p_title, p_yaxis) {
   unique_stps <- unique(df_stp$ICB)
   n_stps <- length(unique_stps)
   
-  unique_orgs <- unique(df_org$OrganisationName)
+  unique_orgs <- unique(df_org$Trust)
   n_orgs <- length(unique_orgs)
   
   # Configure visibility vectors for dynamic dropdown
@@ -1172,7 +1172,7 @@ plot_conversion_rate <- function(p_title, p_yaxis) {
   
   # Traces By Organisation
   for (org in unique_orgs) {
-    df_sub <- df_org |> filter(OrganisationName == org)
+    df_sub <- df_org |> filter(Trust == org)
     
     p <- p |> 
       add_trace(
@@ -2034,7 +2034,7 @@ df_summary_age_rate |>
 # Data
 map_data <- summary_df %>%
   filter(Week == max(Week, na.rm = TRUE)) |>
-  group_by(Week, OrganisationName) %>%
+  group_by(Week, Trust) %>%
   summarise(
     `4Hours`      = sum(`4Hours`, na.rm = TRUE),
     `4-12Hours`   = sum(`4-12Hours`, na.rm = TRUE),
@@ -2042,7 +2042,7 @@ map_data <- summary_df %>%
     `Attendances` = sum(`Attendances`, na.rm = TRUE),
     .groups       = "drop"
   ) %>%
-  inner_join(site_coords, by = "OrganisationName")
+  inner_join(site_coords, by = "Trust")
 
 # 2. Define continuous color palettes (1 per line)
 pal_att  <- colorNumeric(palette = "YlOrRd", domain = map_data$Attendances) 
@@ -2117,7 +2117,7 @@ leaflet(map_data, options = leafletOptions(
     fillOpacity = 0.85,
     stroke = TRUE,
     weight = 1.5,
-    layerId = ~OrganisationName,
+    layerId = ~Trust,
     options = markerOptions(
       attendances = map_data$Attendances,       h4          = map_data$`4Hours`,
       h412        = map_data$`4-12Hours`,
@@ -2128,7 +2128,7 @@ leaflet(map_data, options = leafletOptions(
       c_h12       = map_data$col_h12
     ),
     popup = ~paste0(
-      "<strong>", OrganisationName, "</strong><br/>",
+      "<strong>", Trust, "</strong><br/>",
       "<strong>Week Ending:</strong> ", format(max(map_data$Week), "%d %b %Y"), "<br/><hr/>",
       "<strong>Attendances:</strong> ", format(`Attendances`, big.mark = ","), "<br/>",
       "<strong>&lt;4 Hours:</strong> ", format(`4Hours`, big.mark = ","), "<br/>",
@@ -2188,7 +2188,7 @@ leaflet(map_data, options = leafletOptions(
 #| warning: false
 
 summary_df |>
-  group_by(ProviderCode, OrganisationName, Stp, AgeBand) |>
+  group_by(ProviderCode, Trust, Stp, AgeBand) |>
   summarise(
     Total_4Hours = sum(`4Hours`, na.rm = TRUE),
     Total_4_12Hours = sum(`4-12Hours`, na.rm = TRUE),
@@ -2203,7 +2203,7 @@ summary_df |>
     extensions = c("Buttons"),
     colnames = c(
       "Provider Code" = "ProviderCode",
-      "Organisation" = "OrganisationName",
+      "Organisation" = "Trust",
       "STP/ICB" = "Stp",
       "Age Band" = "AgeBand",
       "< 4 Hours" = "Total_4Hours",
@@ -2400,13 +2400,13 @@ df_stp <- summary_df |>
 
 # Trust 
 df_org <- summary_df |> 
-  group_by(Week, OrganisationName) |> 
+  group_by(Week, Trust) |> 
   summarise(Attendances = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
   inner_join(
     summary_df_avoidable |> 
-      group_by(Week, OrganisationName) |> 
+      group_by(Week, Trust) |> 
       summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop"),
-    by = c("Week", "OrganisationName")
+    by = c("Week", "Trust")
   ) |> 
   mutate(pct_avoidable = (Avoid / Attendances) * 100) 
 
@@ -2417,7 +2417,7 @@ n_agebands <- length(unique_agebands)
 unique_stps <- unique(df_stp$ICB)
 n_stps <- length(unique_stps)
 
-unique_orgs <- unique(df_org$OrganisationName)
+unique_orgs <- unique(df_org$Trust)
 n_orgs <- length(unique_orgs)
 
 # Configure visibility vectors for dynamic dropdown
@@ -2526,7 +2526,7 @@ for (stp_item in unique_stps) {
 
 # Traces By Organisation
 for (org in unique_orgs) {
-  df_sub <- df_org |> filter(OrganisationName == org)
+  df_sub <- df_org |> filter(Trust == org)
   
   p <- p |> 
     add_trace(
@@ -2656,7 +2656,7 @@ df_stp <- summary_df_avoidable |>
 
 # Trust 
 df_org <- summary_df_avoidable |> 
-  group_by(Week, OrganisationName) |> 
+  group_by(Week, Trust) |> 
   summarise(Avoid = sum(Attendances, na.rm = TRUE), .groups = "drop") |> 
   mutate(Cost_Saving = round(Avoid * lkp_ed_visit_cost, 0))
 
@@ -2667,7 +2667,7 @@ n_agebands <- length(unique_agebands)
 unique_stps <- unique(df_stp$ICB)
 n_stps <- length(unique_stps)
 
-unique_orgs <- unique(df_org$OrganisationName)
+unique_orgs <- unique(df_org$Trust)
 n_orgs <- length(unique_orgs)
 
 # Configure visibility vectors for dynamic dropdown
@@ -2776,7 +2776,7 @@ for (stp_item in unique_stps) {
 
 # Traces By Organisation
 for (org in unique_orgs) {
-  df_sub <- df_org |> filter(OrganisationName == org)
+  df_sub <- df_org |> filter(Trust == org)
   
   p <- p |> 
     add_trace(

@@ -465,7 +465,7 @@ if(nrow(df_spot) >10){
 
 # Summary Values - ACTUALS (Validation)
 summary_df <- df_clean %>%
-  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, OrganisationName = Trust, Stp, Department_Type, AgeBand) %>%
+  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, Trust, Stp, Department_Type, AgeBand) %>%
   summarise(
     `4Hours`     = sum(DerEcDuration >= 0 & DerEcDuration <= 239, na.rm = TRUE),
     `4-12Hours`  = sum(DerEcDuration >= 240 & DerEcDuration <= 719, na.rm = TRUE),
@@ -489,7 +489,7 @@ summary_df_avoidable <- df_avoidable_event %>%
   filter(isAvoidable == TRUE) |> 
   mutate(Week = closest_future_sunday(ArrivalDate)) |> 
   mutate(STP = if_else(nchar(Stp) > 32, str_trunc(Stp, width = 32, side = "right", ellipsis = "..."), Stp)) |> 
-  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, OrganisationName = Trust, Stp, Department_Type, AgeBand, isAvoidable) %>%
+  group_by(Week, Month, Year, DerActivityMonth, ProviderCode, Trust, Stp, Department_Type, AgeBand, isAvoidable) %>%
   summarise(
     `4Hours`     = sum(DerEcDuration >= 0 & DerEcDuration <= 239, na.rm = TRUE),
     `4-12Hours`  = sum(DerEcDuration >= 240 & DerEcDuration <= 719, na.rm = TRUE),
