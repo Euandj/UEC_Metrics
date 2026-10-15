@@ -103,18 +103,20 @@ icb_vw_palette <- c(
 
 # Lookup dataframe of South West Acute Hospital sites and coordinates
 site_coords <- tibble::tribble(
-  ~Trust,                                ~lat,     ~lng,
-  "Bristol NHS FT",                                 51.4583,  -2.5976,
-  "Gloucestershire Hospitals NHS FT",               51.8921,  -2.0735,
-  "University Hospitals Plymouth NHS FT",           50.4172,  -4.1161,
-  "University Hospitals Dorset NHS FT",             50.7474,  -1.8218,
-  "Somerset NHS FT",                                51.0121,  -3.1189,
-  "Royal Devon University Healthcare NHS FT",       51.0911,  -4.0543,
-  "Royal Cornwall Hospitals NHS FT",                50.2690,  -5.0954,
-  "Royal United Hospitals Bath NHS FT",             51.3888,  -2.3897,
-  "Salisbury NHS FT",                               51.0478,  -1.7925,
-  "Great Western Hospitals NHS FT",                 51.5348,  -1.7482,
-  "Torbay And South Devon NHS FT",                  50.4811,  -3.5511
+  ~Trust,                                    ~lat,     ~lng,
+  "University Hospitals Dorset NHS FT",      50.7479,  -1.8219,
+  "Torbay And South Devon NHS FT",           50.4820,  -3.5540,
+  "Dorset County Hospital NHS FT",           50.7127,  -2.4456,
+  "Royal United Hospitals Bath NHS FT",      51.3918,  -2.3907,
+  "Royal Cornwall Hospitals NHS FT",         50.2669,  -5.0933,
+  "Somerset NHS FT",                         51.0115,  -3.1210,
+  "Royal Devon University Healthcare NHS FT", 50.7168, -3.5064,
+  "University Hospitals Plymouth NHS FT",    50.4168,  -4.1160,
+  "Great Western Hospitals NHS FT",          51.5387,  -1.7280,
+  "Salisbury NHS FT",                        51.0452,  -1.7879,
+  "Gloucestershire Hospitals NHS FT",        51.8661,  -2.2325,
+  "Bristol NHS FT",                          51.4590,  -2.5959,
+  "North Bristol NHS FT",                    51.4973,  -2.5930 
 )
 
 # Week ending function (Sunday)
@@ -143,9 +145,10 @@ lkp_ed_visit_cost <- 271.64
 
 # Data Sets
 df_spot <- readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC.rds"))
+df_spot_low <- readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC_low.rds"))
 summary_df <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances.rds"))
 df_clean <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
-df_ons <- readRDS(paste0(my_dir,"data/rds/UEC_Attendances_ONS_lkp.rds"))
+df_ons <- readRDS(paste0(my_dir,"data/rds/UEC_Attendances_ONS_lkp.rds")) # 2024
 summary_df_avoidable <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge.rds"))
 df_virtual_ward <- readRDS(paste0(my_dir,"data/rds/UEC_df_sql_virtual.rds"))
 df_ucr <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_UCR_Events.rds"))
@@ -1312,7 +1315,7 @@ generate_spc_age_data <- function(flag_type, category, ageband) {
 # SPC All Function
 generate_spc_data_single <- function(flag, category){
   plot_data |> 
-    ptd_spc(value_field = Percentage, date_field = Week, improvement_direction = "increase") %>% 
+    ptd_spc(value_field = Percentage, date_field = Week, improvement_direction = "decrease") %>% 
     ptd_create_ggplot(y_axis_label = "Percentage of Attendances", percentage_y_axis = TRUE) +
     ggplot2::labs(
       title = paste0(category, " Weekly ED Type 1 by ", flag),
@@ -1324,7 +1327,7 @@ generate_spc_data_single <- function(flag, category){
 # SPC Facet Function - Stage 1
 generate_spc_data_facet <- function(facet_col){
   plot_data |> 
-    ptd_spc(value_field = Percentage, date_field = Week, improvement_direction = "increase", facet_field = {{ facet_col }})
+    ptd_spc(value_field = Percentage, date_field = Week, improvement_direction = "decrease", facet_field = {{ facet_col }})
 }
 # SPC Facet Function - Stage 2
 generate_spc_data_facet_plot <- function(flag, category, ageband){
@@ -1794,7 +1797,9 @@ plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Conv
 
 ```
 
-- Spot Week :
+::: {.panel-tabset .nav-pills}
+
+#### Attendances || Chief Complaint (Parent)
 
 ```{r}
 #| echo: false
@@ -1891,6 +1896,68 @@ commentary_summary2 <- paste(commentary_0_18, commentary_19_64, commentary_65_pl
 `r commentary_summary2`
 
 *The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently hidden from view)*
+
+#### Attendances || Chief Complaint (Child)
+
+```{r}
+#| echo: false
+#| warning: false
+
+#  Attendances By Chief Complaint
+
+# Build explicit hierarchical nodes for Plotly
+df_plot_spot_low <- df_spot_low |>
+  filter(Grp != "Other") |> 
+  filter(DataType == "Attendances_Avg_lwo") |> 
+  mutate(AgeBand = factor(AgeBand, levels = c("0-18", "19-64", "65+")))
+
+# Build explicit hierarchical nodes for Plotly
+df_tree <- bind_rows(
+  df_plot_spot_low |> 
+    group_by(AgeBand) |> 
+    summarise(Total_Attendances = sum(Total_Attendances), .groups = "drop") |> 
+    mutate(ids = as.character(AgeBand), parents = "", labels = as.character(AgeBand)),
+  df_plot_spot_low |> 
+    group_by(AgeBand, Grp) |> 
+    summarise(Total_Attendances = sum(Total_Attendances), .groups = "drop") |> 
+    mutate(ids = paste(AgeBand, Grp, sep = " / "), 
+           parents = as.character(AgeBand), 
+           labels = as.character(Grp)),
+  df_plot_spot_low |>
+    mutate(
+      ids = paste(AgeBand, Grp, ChiefCompLow, sep = " / "), 
+      parents = paste(AgeBand, Grp, sep = " / "), 
+      labels = as.character(ChiefCompLow)
+    )
+) 
+
+# Render interactive treemap
+plot_ly(
+  data = df_tree,
+  type = "treemap",
+  ids = ~ids,
+  labels = ~labels,
+  parents = ~parents,
+  values = ~Total_Attendances,
+  branchvalues = "total",
+  sort = FALSE,
+  textinfo = "label+percent parent"
+) |> 
+  layout(
+        title = list(
+      text = paste0(
+        "<b>Average Weekly Attendances (Last 6 Weeks to ", format(max(df_clean$Week, na.rm = TRUE), "%d %b %Y"),
+        ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    margin = list(t = 40, b = 10, l = 10, r = 10)
+  )
+
+```
+
+:::
 
 ### Conversion Rate (%)
 
@@ -2252,7 +2319,9 @@ plot_attendance_summary(summary_df_avoidable, "Total Volume Of Avoidable Attenda
 
 ```
 
-- Spot Week :
+::: {.panel-tabset .nav-pills}
+
+#### Avoidable Attendances || Chief Complaint (Parent)
 
 ```{r}
 #| echo: false
@@ -2349,6 +2418,67 @@ commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plu
 `r commentary_summary`
 
 *The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently hidden from view)*
+
+#### Avoidable Attendances || Chief Complaint (Child)
+
+```{r}
+#| echo: false
+#| warning: false
+
+# Avoidable Attendances By Chief Complaint
+
+df_plot_avoid_low <- df_spot_low |>
+   filter(Grp != "Other") |> 
+  filter(DataType == "Avoid_Attendances_Avg_low") |> 
+  mutate(AgeBand = factor(AgeBand, levels = c("0-18", "19-64", "65+")))
+
+# Build explicit hierarchical nodes for Plotly
+df_tree_av <- bind_rows(
+  df_plot_avoid_low |> 
+    group_by(AgeBand) |> 
+    summarise(Total_Attendances = sum(Total_Attendances), .groups = "drop") |> 
+    mutate(ids = as.character(AgeBand), parents = "", labels = as.character(AgeBand)),
+  df_plot_avoid_low |> 
+    group_by(AgeBand, Grp) |> 
+    summarise(Total_Attendances = sum(Total_Attendances), .groups = "drop") |> 
+    mutate(ids = paste(AgeBand, Grp, sep = " / "), 
+           parents = as.character(AgeBand), 
+           labels = as.character(Grp)),
+  df_plot_avoid_low |>
+    mutate(
+      ids = paste(AgeBand, Grp, ChiefCompLow, sep = " / "), 
+      parents = paste(AgeBand, Grp, sep = " / "), 
+      labels = as.character(ChiefCompLow)
+    )
+) 
+
+# Render interactive treemap
+plot_ly(
+  data = df_tree_av,
+  type = "treemap",
+  ids = ~ids,
+  labels = ~labels,
+  parents = ~parents,
+  values = ~Total_Attendances,
+  branchvalues = "total", 
+  sort = FALSE,
+  textinfo = "label+percent parent"
+) |> 
+  layout(
+        title = list(
+      text = paste0(
+         "<b>Average Weekly Avoidable Attendances by Chief Complaint (Last 6 Weeks to ", format(max(df_clean$Week, na.rm = TRUE), "%d %b %Y"),
+         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
+      ),
+      x = 0,
+      font = list(family = "Arial, sans-serif", size = 16, color = "#212529")
+    ),
+    margin = list(t = 40, b = 10, l = 10, r = 10)
+  )
+
+```
+
+:::
 
 ### Percentage Of Avoidable
 
@@ -3151,11 +3281,11 @@ commentary_12 <- paste0(narr(df_facet), " In Type 1", sep = "<br><br>")
 #| echo: false
 #| warning: false
 
-plot_time_summary(df_clean, "Average Time Spent In ED Department & By Age", "Minutes")
+plot_time_summary(df_clean, "Average Time Spent In ED by Attendance Outcome", "Minutes")
 
 ```
 
-- Spot Week :
+
 
 ```{r}
 #| echo: false
@@ -3163,9 +3293,9 @@ plot_time_summary(df_clean, "Average Time Spent In ED Department & By Age", "Min
 
 # Time 
 df_spot_time <- df_clean |> 
-  filter(Week >= (max_week_clean - lubridate::weeks(5)), !is.na(EcdsGroup1), !is.na(AgeBand)) |> 
+  filter(Week >= (max_week_clean - lubridate::weeks(5)), !is.na(ChiefCompHigh), !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
-  mutate(Grp = forcats::fct_lump_n(EcdsGroup1, n = 5, other_level = "Other"),
+  mutate(Grp = forcats::fct_lump_n(ChiefCompHigh, n = 5, other_level = "Other"),
          Total_Age_Attendances = n()) |> 
   group_by(AgeBand, Grp) |> 
   summarise(Avg_Time = round(mean(DerEcDuration, na.rm = TRUE), 0),
@@ -3228,7 +3358,7 @@ subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |>
   layout(
     title = list(
       text = paste0(
-        "<b>Average Time Spent In ED Department & By Age Band (Last 6 Weeks to ", format(max(df_spot_time$Week), "%d %b %Y"), 
+        "<b>Average Time Spent In ED by Attendance Outcome By Age Band (Last 6 Weeks to ", format(max(df_spot_time$Week), "%d %b %Y"), 
         ")</b><br><sup>Top 5 primary drivers calculated independently for each age demographic</sup>"
       ),
       x = 0,
@@ -3247,9 +3377,9 @@ subplot(p1, p2, p3, nrows = 1, shareX = TRUE, shareY = FALSE, margin = 0.05) |>
 
 # Data 
 dfc3 <- df_clean |> 
-  filter(Week >= (max_week_clean - lubridate::weeks(5)), !is.na(EcdsGroup1), !is.na(AgeBand)) |> 
+  filter(Week >= (max_week_clean - lubridate::weeks(5)), !is.na(ChiefCompHigh), !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
-  mutate(Grp = forcats::fct_lump_n(EcdsGroup1, n = 5, other_level = "Other"),
+  mutate(Grp = forcats::fct_lump_n(ChiefCompHigh, n = 5, other_level = "Other"),
          Total_Age_Attendances = n()) |> 
   group_by(AgeBand, Grp) |> 
   summarise(Avg_Time = round(mean(DerEcDuration, na.rm = TRUE), 0),
@@ -3411,6 +3541,68 @@ df_virtual_ward_summary |>
 plot_ucr_summary(my_ucr_referrals[1], "Referrals")
 
 ```
+
+### Rates of All Referrals
+
+```{r}
+#| echo: false
+#| warning: false
+
+# ONS All
+df_ons_lkp <- df_ons |> 
+  group_by(OrgCode = SubICB_Code) |> 
+  summarise(Population = sum(Population))
+
+df_summary_rate <- df_ucr |> 
+  filter(flag == "ICB") |> 
+  filter(ResponseCategory == my_ucr_referrals[1]) |> 
+  group_by(Dt, OrgCode, ICB) |> 
+  summarise(Vol = sum(MeasureValue, na.rm = TRUE), .groups = "drop") |> 
+  left_join(df_ons_lkp, by = join_by(OrgCode)) |> 
+  mutate(Rate_per_100k = (Vol / Population) * 100000)
+
+
+# Plot All
+df_summary_rate |> 
+  plot_ly(x = ~Dt, y = ~Rate_per_100k, color = ~ICB, type = "scatter", mode = "lines+markers",marker = list(size = 6),
+          line = list(width = 2)) %>%
+  layout(
+    title = list(text = "Weekly Referrals (All) Rate per 100,000 Population"),
+    yaxis = list(title = list(text = "Rate per 100k")),
+    xaxis = list(
+      title = "Week",
+      range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
+      rangeslider = list(visible = TRUE),
+      rangeselector = list(
+        x = 0.75, 
+        y = 1.0, 
+        xanchor = "right",
+        yanchor = "top",
+        buttons = list(
+          list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
+          list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
+          list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
+          list(step = "all", label = "All")
+        )
+      )
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        x0 = "2026-09-01",
+        x1 = "2026-09-01",
+        y0 = 0,
+        y1 = 1,
+        yref = "paper",
+        line = list(color = "#d9534f", width = 2, dash = "dash")
+      )
+    ),
+    annotations = list(policy_annotation)
+  )
+
+```
+
+
 
 ### 2 Hour Referrals
 

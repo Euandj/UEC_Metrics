@@ -68,6 +68,7 @@ if(run_read_rds){
   cat(crayon::green("✔ RDS File Used !"))
   
   df_spot <- readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC.rds"))
+  df_spot_low <- readRDS(paste0(my_dir,"data/rds/Spot_Week_UEC_low.rds"))
   summary_df <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances.rds"))
   df_clean <- readRDS(paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
   summary_df_avoidable <- readRDS(paste0(my_dir,"data/rds/Avoidable_UEC_Discharge.rds"))
@@ -127,7 +128,8 @@ SELECT
         ELSE 'Other / Unknown'
     END AS ECDS_Group1,
     EC.EC_Chief_Complaint_SNOMED_CT,
-    TOS.ECDS_Group1,
+    TOS.ECDS_Group1 AS ChiefCompHigh,
+    TOS.SNOMED_UK_Preferred_Term AS ChiefCompLow,
     EC.EC_Attendance_Source_SNOMED_CT,
     EC.EC_Arrival_Mode_SNOMED_CT,
     EC.EC_AttendanceCategory,
@@ -153,7 +155,8 @@ LEFT JOIN (SELECT DISTINCT Site_Code, Trust_Name
                   FROM [Reporting_UKHD_ODS].[Provider_Site]) AS LKP2
    ON EC.Der_Provider_Site_Code = LKP2.Site_Code
     
-LEFT JOIN (SELECT DISTINCT Snomed_Code, ECDS_Group1 FROM UKHD_ECDS_TOS.Code_Sets 
+LEFT JOIN (SELECT DISTINCT Snomed_Code, ECDS_Group1, SNOMED_UK_Preferred_Term
+                  FROM UKHD_ECDS_TOS.Code_Sets 
                   WHERE Sheet_Name = '13.4 CHIEF COMPLAINT' 
                   AND ECDS_Group1 <> 'Code deprecated') AS TOS
     ON EC.EC_Chief_Complaint_SNOMED_CT = TOS.Snomed_Code
@@ -217,21 +220,21 @@ if(nrow(df_ucr) >1000){
 # icb_ons_lookup_sw <- tribble(
 #   ~AreaCode,  ~AreaName,                                                                        ~StpCode, ~SubICB_Code, ~ICB_Name_Short,
 #   "E38000230", "NHS Devon ICB - 15N",                                                             "QJK",    "15N",        "Devon",
-#   "E38000222", "NHS Bristol, North Somerset and South Gloucestershire ICB - 15A",                "QUY",    "15A",        "BNSSG",
-#   "E38000231", "NHS Bath and North East Somerset, Swindon and Wiltshire ICB - 92A",                "QOX",    "92A",        "BSW",
+#   "E38000222", "NHS Bristol, North Somerset and South Gloucestershire ICB - 15A",                "QUY",    "15C",        "BNSSG",
+#   "E38000231", "NHS Bath and North East Somerset, Swindon and Wiltshire ICB - 92A",                "QOX",    "92G",        "BSW",
 #   "E38000062", "NHS Gloucestershire ICB - 11M",                                                    "QR1",    "11M",        "Gloucestershire",
 #   "E38000150", "NHS Somerset ICB - 11X",                                                         "QSL",    "11X",        "Somerset",
 #   "E38000089", "NHS Cornwall and the Isles of Scilly ICB - 11N",                                  "QT6",    "11N",        "Cornwall",
 #   "E38000045", "NHS Dorset ICB - 11J",                                                           "QVV",    "11J",        "Dorset"
 # )
 # 
-# # ONS Data by AGe
-# df_population_raw <- read_csv(paste0(my_dir, "Data/csv/2022 SNPP SICB pop persons.csv")) |> 
-#   clean_names("upper_camel") |> 
-#   filter(AgeGroup != "All ages") |> 
-#   filter(AreaCode %in% icb_ons_lookup_sw$AreaCode) |> 
-#   select(AreaCode, AreaName, AgeGroup, Population = X2025) |> 
-#   left_join(icb_ons_lookup_sw |> select(AreaCode, StpCode), by = join_by(AreaCode)) |> 
+# # ONS Data by Age
+# df_population_raw <- read_csv(paste0(my_dir, "Data/csv/2022 SNPP SICB pop persons.csv")) |>
+#   clean_names("upper_camel") |>
+#   filter(AgeGroup != "All ages") |>
+#   filter(AreaCode %in% icb_ons_lookup_sw$AreaCode) |>
+#   select(AreaCode, AreaName, AgeGroup, Population = X2025) |>
+#   left_join(icb_ons_lookup_sw |> select(-AreaName), by = join_by(AreaCode)) |>
 #   mutate(age_num = case_when(
 #     AgeGroup == "90 and over" ~ 90, TRUE ~ as.numeric(AgeGroup)),
 #     AgeBand = case_when(
@@ -242,8 +245,8 @@ if(nrow(df_ucr) >1000){
 #   select(-age_num)
 # 
 # # Total By Ages
-# df_ons <- df_population_raw |> 
-#   group_by(StpCode, AreaName, AgeBand) |> 
+# df_ons <- df_population_raw |>
+#   group_by(StpCode, SubICB_Code, ICB_Name_Short, AreaName, AgeBand) |>
 #   summarise(Population = sum(Population))
 # 
 # # Save
@@ -255,7 +258,7 @@ if(nrow(df_ucr) >1000){
 #   # Message
 #   cat(crayon::red("Error: UEC_Attendances_ONS_lkp -  Failed."), "\n")
 # }
-# 
+
 # -------------------------------------------------------------------------------------------------------
 
 # Message
@@ -393,41 +396,14 @@ if(nrow(df_avoidable_event) >1000){
 
 # -------------------------------------------------------------------------------------------------------
 
-# Spot Week :: Attendance, AgeBand and Chief Complaint 
+# 6 Week :: Attendance, AgeBand and Chief Complaint 
 
-df_spot_1 <- df_clean |> 
-  filter(Week == max(Week, na.rm = TRUE)) |> 
-  filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
-  group_by(AgeBand) |> 
-  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
-  group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = round(n(), 0), .groups = "drop_last") |>
-  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
-         Rank = min_rank(desc(Total_Attendances))) |> 
-  ungroup() |> 
-  mutate(DataType = "Attendances")
-
-df_spot_2 <- df_avoidable_event |> 
-  filter(isAvoidable == TRUE) |> 
-  mutate(Week = closest_future_sunday(ArrivalDate)) |> 
-  filter(Week == max(Week, na.rm = TRUE)) |> 
-  filter(!is.na(EcdsGroup1), !is.na(AgeBand)) |> 
-  group_by(AgeBand) |> 
-  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
-  group_by(AgeBand, Grp) |> 
-  summarise(Total_Attendances = round(n(), 0), .groups = "drop_last") |>
-  mutate(Percentage = Total_Attendances / sum(Total_Attendances),
-         Rank = min_rank(desc(Total_Attendances))) |> 
-  ungroup() |> 
-  mutate(DataType = "Avoid_Attendances")
-
-# Calculate latest 6 weeks date boundary
 max_week_clean <- max(df_clean$Week, na.rm = TRUE)
 
-df_spot_3 <- df_clean |> 
-  filter(Week >= (max_week_clean - weeks(5)), !is.na(EcdsGroup1),  !is.na(AgeBand)) |> 
+df_spot_1 <- df_clean |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(ChiefCompHigh),  !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
-  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  mutate(Grp = fct_lump_n(ChiefCompHigh, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
   summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
@@ -435,12 +411,13 @@ df_spot_3 <- df_clean |>
   ungroup() |> 
   mutate(DataType = "Attendances_Avg")
 
-df_spot_4 <- df_avoidable_event |> 
+
+df_spot_2 <- df_avoidable_event |> 
   filter(isAvoidable == TRUE) |> 
   mutate(Week = closest_future_sunday(ArrivalDate)) |> 
-  filter(Week >= (max_week_clean - weeks(5)), !is.na(EcdsGroup1),  !is.na(AgeBand)) |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(ChiefCompHigh),  !is.na(AgeBand)) |> 
   group_by(AgeBand) |> 
-  mutate(Grp = fct_lump_n(EcdsGroup1, n = 5, w = NULL, other_level = "Other")) |> 
+  mutate(Grp = fct_lump_n(ChiefCompHigh, n = 5, w = NULL, other_level = "Other")) |> 
   group_by(AgeBand, Grp) |> 
   summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop_last") |>
   mutate(Percentage = Total_Attendances / sum(Total_Attendances),
@@ -448,7 +425,7 @@ df_spot_4 <- df_avoidable_event |>
   ungroup() |> 
   mutate(DataType = "Avoid_Attendances_Avg")
 
-df_spot <- rbind(df_spot_1, df_spot_2, df_spot_3, df_spot_4) |> 
+df_spot <- rbind(df_spot_1, df_spot_2) |> 
   mutate(Week = max_week_clean)
 
 # Save 
@@ -459,6 +436,49 @@ if(nrow(df_spot) >10){
 } else {
   # Message
   cat(crayon::red("Error: Spot_Week_UEC -  Failed."), "\n")
+}
+
+# Lower Level View 
+df_spot_lower_1 <- df_clean |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(ChiefCompHigh),  !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(ChiefCompHigh, n = 5, w = NULL, other_level = "Other")) |> 
+  group_by(AgeBand, Grp, ChiefCompLow) |> 
+  summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop") |> 
+  group_by(AgeBand) |> 
+  mutate(Total_AgeBand = sum(Total_Attendances)) |> 
+  group_by(AgeBand, Grp) |> 
+  mutate(Total_Grp = sum(Total_Attendances), Pct_Top_Level = Total_Grp / Total_AgeBand, Pct_Within_Grp = Total_Attendances / Total_Grp) |> 
+  ungroup() |> 
+  mutate(DataType = "Attendances_Avg_lwo")
+
+df_spot_lower_2 <- df_avoidable_event |> 
+  filter(isAvoidable == TRUE) |> 
+  mutate(Week = closest_future_sunday(ArrivalDate)) |> 
+  filter(Week >= (max_week_clean - weeks(5)), !is.na(ChiefCompHigh), !is.na(ChiefCompLow), !is.na(AgeBand)) |> 
+  group_by(AgeBand) |> 
+  mutate(Grp = fct_lump_n(ChiefCompHigh, n = 5, w = NULL, other_level = "Other")) |> 
+  filter(Grp != "Other") |> 
+  group_by(AgeBand, Grp, ChiefCompLow) |> 
+  summarise(Total_Attendances = round(n() / 6, 0), .groups = "drop") |> 
+  group_by(AgeBand) |> 
+  mutate(Total_AgeBand = sum(Total_Attendances)) |> 
+  group_by(AgeBand, Grp) |> 
+  mutate(Total_Grp = sum(Total_Attendances), Pct_Top_Level = Total_Grp / Total_AgeBand, Pct_Within_Grp = Total_Attendances / Total_Grp) |> 
+  ungroup() |> 
+  mutate(DataType = "Avoid_Attendances_Avg_low")
+
+df_spot_low <- rbind(df_spot_lower_1, df_spot_lower_2) |> 
+  mutate(Week = max_week_clean)
+
+# Save 
+if(nrow(df_spot_low) >10){
+  saveRDS(df_spot_low, paste0(my_dir,"data/rds/Spot_Week_UEC_low.rds"))
+  # Message
+  cat(crayon::green("✔ Spot_Week_UEC_low -  Success!"))
+} else {
+  # Message
+  cat(crayon::red("Error: Spot_Week_UEC_low -  Failed."), "\n")
 }
 
 # -------------------------------------------------------------------------------------------------------
