@@ -3422,7 +3422,7 @@ df_virtual_ward_summary |>
     mode = "text", marker = NULL, showlegend = FALSE, color = ~Icb, colors = icb_vw_palette, textfont = list(size = 11, bold = TRUE)) |> 
   layout(
     title = list(text = "Virtual Ward Bed Occupancy Rate by ICB"),
-    xaxis = list(title = "Date", type = "date", tickformat = "%b %Y"),
+    xaxis = list(title = "Month", type = "date", tickformat = "%b %Y"),
     yaxis = list(title = "Bed Occupancy Rate", tickformat = ".0%"),
     legend = list(
       title = list(text = "<b>ICB</b>"), orientation = "v", x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
@@ -3446,7 +3446,7 @@ df_virtual_ward_summary |>
     mode = "text", marker = NULL, showlegend = FALSE, color = ~Icb, colors = icb_vw_palette, textfont = list(size = 11, bold = TRUE)) |> 
   layout(
     title = list(text = "Virtual Ward Available Beds per 100,000 Population by ICB"),
-    xaxis = list(title = "Date", type = "date", tickformat = "%b %Y"),
+    xaxis = list(title = "Month", type = "date", tickformat = "%b %Y"),
     yaxis = list(title = "Bed Occupancy Rate"),
     legend = list(
       title = list(text = "<b>ICB</b>"), orientation = "v", x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
@@ -3470,7 +3470,7 @@ df_virtual_ward_summary |>
     mode = "text", marker = NULL, showlegend = FALSE, color = ~Icb, colors = icb_vw_palette, textfont = list(size = 11, bold = TRUE)) |> 
   layout(
     title = list(text = "Virtual Ward Occupied Beds per 100,000 Population by ICB"),
-    xaxis = list(title = "Date", type = "date", tickformat = "%b %Y"),
+    xaxis = list(title = "Month", type = "date", tickformat = "%b %Y"),
     yaxis = list(title = "Bed Occupancy Rate"),
     legend = list(
       title = list(text = "<b>ICB</b>"), orientation = "v", x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
@@ -3493,7 +3493,7 @@ df_virtual_ward_summary |>
     mode = "text", marker = NULL, showlegend = FALSE, color = ~Icb, colors = icb_vw_palette, textfont = list(size = 11, bold = TRUE)) |> 
   layout(
     title = list(text = "Number Of Virtual Ward Beds Available by ICB"),
-    xaxis = list(title = "Date", type = "date", tickformat = "%b %Y"),
+    xaxis = list(title = "Month", type = "date", tickformat = "%b %Y"),
     yaxis = list(title = "Bed Volumes"),
     legend = list(
       title = list(text = "<b>ICB</b>"), orientation = "v", x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
@@ -3516,7 +3516,7 @@ df_virtual_ward_summary |>
     mode = "text", marker = NULL, showlegend = FALSE, color = ~Icb, colors = icb_vw_palette, textfont = list(size = 11, bold = TRUE)) |> 
   layout(
     title = list(text = "Number Of Virtual Ward Beds Occupied by ICB"),
-    xaxis = list(title = "Date", type = "date", tickformat = "%b %Y"),
+    xaxis = list(title = "Month", type = "date", tickformat = "%b %Y"),
     yaxis = list(title = "Occupied Bed Volumes"),
     legend = list(
       title = list(text = "<b>ICB</b>"), orientation = "v", x = 1.02, xanchor = "left", y = 1, yanchor = "top"),
@@ -3567,25 +3567,9 @@ df_summary_rate |>
   plot_ly(x = ~Dt, y = ~Rate_per_100k, color = ~ICB, type = "scatter", mode = "lines+markers",marker = list(size = 6),
           line = list(width = 2)) %>%
   layout(
-    title = list(text = "Weekly Referrals (All) Rate per 100,000 Population"),
+    title = list(text = "Monthly Referrals (All) Rate per 100,000 Population"),
     yaxis = list(title = list(text = "Rate per 100k")),
-    xaxis = list(
-      title = "Week",
-      range = if (exists("start_date") && exists("end_date")) list(start_date, end_date) else NULL,
-      rangeslider = list(visible = TRUE),
-      rangeselector = list(
-        x = 0.75, 
-        y = 1.0, 
-        xanchor = "right",
-        yanchor = "top",
-        buttons = list(
-          list(count = 14, label = "Last 14 Days", step = "day", stepmode = "backward"),
-          list(count = 30, label = "Last 30 Days", step = "day", stepmode = "backward"),
-          list(count = 90, label = "Last 90 Days", step = "day", stepmode = "backward"),
-          list(step = "all", label = "All")
-        )
-      )
-    ),
+    xaxis = list(title = "Month"),
     shapes = list(
       list(
         type = "line",
