@@ -42,7 +42,7 @@ cat(sprintf("---\ntitle: \"SW Winter UEC 'Type 1' (Week Ending %s)\"\n---\n", fo
 
 ```
 
-<img src="C:/Users/euan.ives/Desktop/R Stuff/www/logo.png" width="25" height="15" style="position:absolute;top:10px;right:5px;"/>
+<img src="C:/Users/euan.ives/Desktop/R Stuff/www/logo.png" width="45" height="35" style="position:absolute;top:10px;right:5px;"/>
 
 ```{r setup}
 #| echo: false
@@ -1799,7 +1799,7 @@ plot_attendance_summary(summary_df, "Total Volume Of Attendances by View", "Conv
 
 ::: {.panel-tabset .nav-pills}
 
-#### Attendances || Chief Complaint (Parent)
+#### Attendances || Chief Complaint (Summary Level)
 
 ```{r}
 #| echo: false
@@ -1897,7 +1897,7 @@ commentary_summary2 <- paste(commentary_0_18, commentary_19_64, commentary_65_pl
 
 *The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently hidden from view)*
 
-#### Attendances || Chief Complaint (Child)
+#### Attendances || Chief Complaint
 
 ```{r}
 #| echo: false
@@ -1929,7 +1929,9 @@ df_tree <- bind_rows(
       parents = paste(AgeBand, Grp, sep = " / "), 
       labels = as.character(ChiefCompLow)
     )
-) 
+)  |> 
+  arrange(desc(Pct_Within_Grp))
+
 
 # Render interactive treemap
 plot_ly(
@@ -2321,7 +2323,7 @@ plot_attendance_summary(summary_df_avoidable, "Total Volume Of Avoidable Attenda
 
 ::: {.panel-tabset .nav-pills}
 
-#### Avoidable Attendances || Chief Complaint (Parent)
+#### Avoidable Attendances || Chief Complaint (Summary Level)
 
 ```{r}
 #| echo: false
@@ -2419,7 +2421,7 @@ commentary_summary <- paste(commentary_0_18, commentary_19_64, commentary_65_plu
 
 *The "Other" category aggregates a wide variety of low-volume chief complaints and individual clinical outliers; while its cumulative total forms a significant percentage of overall ED attendance, no single driver within it holds individual operational significance. (Currently hidden from view)*
 
-#### Avoidable Attendances || Chief Complaint (Child)
+#### Avoidable Attendances || Chief Complaint
 
 ```{r}
 #| echo: false
@@ -2450,7 +2452,9 @@ df_tree_av <- bind_rows(
       parents = paste(AgeBand, Grp, sep = " / "), 
       labels = as.character(ChiefCompLow)
     )
-) 
+)  |> 
+  arrange(desc(Pct_Within_Grp))
+
 
 # Render interactive treemap
 plot_ly(
@@ -3813,11 +3817,15 @@ Arrival mode
 
 [GitHub Repo UEC Metrics](https://github.com/Euandj/UEC_Metrics){target="_blank"}
 
-VW sitrep
-
 [CSDS](https://www.england.nhs.uk/statistics/statistical-work-areas/2-hour-urgent-community-response/){target="_blank"}
 
 [Urgent Community Response (UCR)](https://www.england.nhs.uk/statistics/statistical-work-areas/2-hour-urgent-community-response/)
+
+[Ambulance Service Response Times](https://tabanalytics.data.england.nhs.uk/#/views/AmbulancePerformanceDashboard/ResponseTimes?:iid=1)
+
+[Ambulance Service Calls](https://tabanalytics.data.england.nhs.uk/#/views/AmbulancePerformanceDashboard/Calls?:iid=2)
+
+[Ambulance Service Incident Outcomes (See & Treat/ Hear & Treat)](https://tabanalytics.data.england.nhs.uk/#/views/AmbulancePerformanceDashboard/IncidentOutcomes?:iid=2)
 
 <small>Source: NHS England South West Insights & Intelligence Team. Data updated weekly.</small>
 :::
@@ -3828,7 +3836,7 @@ VW sitrep
 > South West Intelligence and Insights NHS England\
 > NHS England South West\
 >
-> *Version 1.7*
+> *Version 1.9*
 
 ::: footer
 <img src="C:/Users/euan.ives/Desktop/R Stuff/www/footer.png" alt="Footer Image"/>
