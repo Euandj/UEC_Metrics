@@ -84,6 +84,7 @@ df_sql <- DBI::dbGetQuery(conn = con_udal, statement = "
 
 SELECT
     EC.Arrival_Date,
+    CAST(ISNULL(EC.Arrival_Time, '00:00:00') AS datetime) + CAST(EC.Arrival_Date AS datetime) AS ArrivalDateTime,
     MONTH(EC.Arrival_Date) AS [Month],
     YEAR(EC.Arrival_Date) AS [Year],
     EC.Der_Activity_Month,
@@ -172,7 +173,78 @@ AND EC.Der_Dupe_Flag = 0
 ") |>
   clean_names("upper_camel")
 
+# -------------------------------------------------------------------------------------------------------
 
+df_sql |> 
+  mutate(Hour = hour(ArrivalDateTime)) |> 
+  select(ArrivalDateTime, Hour) |> 
+  filter(Hour == 0)
+  distinct(Hour) |> 
+  arrange(Hour)
+
+# Message
+cat(crayon::green("✔ SQL Success!"))
+# cat(crayon::red("Error: Connection failed."), "\n")
+
+# Check for Full Previous Weeks data 
+if(max(df_sql$ArrivalDate) >= last_sunday(Sys.Date())){
+  
+  lkp_max_week <- last_sunday(Sys.Date())
+  
+  # Message
+  cat(crayon::green("✔ Full Weeks Data -  Success!"))
+} else {
+  # Message
+  err_msg <- sprintf(
+    "Data Incomplete: Maximum ArrivalDate in SQL (%s) is prior to last Sunday (%s). LINE 278",
+    max(df_sql$ArrivalDate),
+    last_sunday(Sys.Date())
+  )
+  cat(crayon::red(err_msg, "\n"))
+  stop(err_msg, call. = FALSE) # Stop Main IF Statement
+  
+  # lkp_max_week <- last_sunday(Sys.Date())-7 ## TEMP FIX 
+}
+
+# Clean names for Avoidable ED Attendance Package 
+df_clean <- df_sql |> 
+  filter(ArrivalDate >= min(ArrivalDate[wday(ArrivalDate, week_start = 1) == 1])) |> # From First Monday
+  mutate(Week = closest_future_sunday(ArrivalDate)) |> 
+  mutate(Hour = hour(ArrivalDateTime)) |> 
+  filter(Week <= lkp_max_week) |> # Full Weeks only 
+  mutate(Stp = Stp |> 
+           str_remove_all(" INTEGRATED CARE BOARD") |> 
+           str_to_title() |> 
+           str_replace("^Nhs\\b", "NHS") |> 
+           str_squish(),
+         OrganisationName = str_to_title(OrganisationName)) |> 
+  mutate(Trust = Trust |> 
+           str_remove_all(" NHS FOUNDATION TRUST") |> 
+           str_remove_all(" NHS TRUST") |> 
+           str_to_title() |> 
+           str_replace("^Nhs\\b", "NHS") |> 
+           str_squish() |> 
+           str_c(" NHS FT")) |> 
+  rename(
+    Department_Type = EcDepartmentType,
+    Discharge_Status = EcDischargeStatusSnomedCt,
+    AttendanceCategory = EcAttendanceCategory,
+    Arrival_Mode = EcArrivalModeSnomedCt,
+    Investigation = DerEcInvestigationAll,
+    Treatment = DerEcTreatmentAll)
+
+# Update 
+lkp_box_weeks <- c(max(df_clean$Week), max(df_clean$Week) - 7)
+
+# Save 
+if(nrow(df_clean) >1000){
+  saveRDS(df_clean, paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
+  # Message
+  cat(crayon::green("✔ Actual_UEC_Attendances_Events -  Success!"))
+} else {
+  # Message
+  cat(crayon::red("Error: Actual_UEC_Attendances_Events.rds -  Failed."), "\n")
+}
 
 # -------------------------------------------------------------------------------------------------------
 # UCR
@@ -259,68 +331,7 @@ if(nrow(df_ucr) >1000){
 #   cat(crayon::red("Error: UEC_Attendances_ONS_lkp -  Failed."), "\n")
 # }
 
-# -------------------------------------------------------------------------------------------------------
 
-# Message
-cat(crayon::green("✔ SQL Success!"))
-# cat(crayon::red("Error: Connection failed."), "\n")
-
-# Check for Full Previous Weeks data 
-if(max(df_sql$ArrivalDate) >= last_sunday(Sys.Date())){
-  
-  lkp_max_week <- last_sunday(Sys.Date())
-  
-  # Message
-  cat(crayon::green("✔ Full Weeks Data -  Success!"))
-} else {
-  # Message
-  err_msg <- sprintf(
-    "Data Incomplete: Maximum ArrivalDate in SQL (%s) is prior to last Sunday (%s).",
-    max(df_sql$ArrivalDate),
-    last_sunday(Sys.Date())
-  )
-  cat(crayon::red(err_msg, "\n"))
-  stop(err_msg, call. = FALSE) # Stop Main IF Statement
-}
-
-# Clean names for Avoidable ED Attendance Package 
-df_clean <- df_sql |> 
-  filter(ArrivalDate >= min(ArrivalDate[wday(ArrivalDate, week_start = 1) == 1])) |> # From First Monday
-  mutate(Week = closest_future_sunday(ArrivalDate)) |> 
-  filter(Week <= lkp_max_week) |> # Full Weeks only 
-  mutate(Stp = Stp |> 
-           str_remove_all(" INTEGRATED CARE BOARD") |> 
-           str_to_title() |> 
-           str_replace("^Nhs\\b", "NHS") |> 
-           str_squish(),
-         OrganisationName = str_to_title(OrganisationName)) |> 
-  mutate(Trust = Trust |> 
-           str_remove_all(" NHS FOUNDATION TRUST") |> 
-           str_remove_all(" NHS TRUST") |> 
-           str_to_title() |> 
-           str_replace("^Nhs\\b", "NHS") |> 
-           str_squish() |> 
-           str_c(" NHS FT")) |> 
-  rename(
-    Department_Type = EcDepartmentType,
-    Discharge_Status = EcDischargeStatusSnomedCt,
-    AttendanceCategory = EcAttendanceCategory,
-    Arrival_Mode = EcArrivalModeSnomedCt,
-    Investigation = DerEcInvestigationAll,
-    Treatment = DerEcTreatmentAll)
-
-# Update 
-lkp_box_weeks <- c(max(df_clean$Week), max(df_clean$Week) - 7)
-
-# Save 
-if(nrow(df_clean) >1000){
-  saveRDS(df_clean, paste0(my_dir,"data/rds/Actual_UEC_Attendances_Events.rds"))
-  # Message
-  cat(crayon::green("✔ Actual_UEC_Attendances_Events -  Success!"))
-} else {
-  # Message
-  cat(crayon::red("Error: Actual_UEC_Attendances_Events.rds -  Failed."), "\n")
-}
 
 # -------------------------------------------------------------------------------------------------------
 
